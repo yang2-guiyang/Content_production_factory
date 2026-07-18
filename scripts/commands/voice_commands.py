@@ -10,6 +10,12 @@ if __name__ == "__main__":
 import click
 import requests
 
+# 步骤1：把 scripts 目录加入模块搜索路径。
+SCRIPTS_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, SCRIPTS_DIRECTORY)
+
+from commands.env_reader import get_env_value
+
 
 API_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization"
 DEFAULT_TARGET_MODEL = "qwen-audio-3.0-tts-flash"
@@ -55,7 +61,7 @@ def cli():
 def create_voice_command(audio_url, target_model, prefix):
     """使用公网音频创建 Qwen-Audio-TTS 音色（例: python scripts/main.py voice create https://example.com/voice.wav --prefix narrator1）"""
     # 步骤1：读取 API Key。
-    api_key = os.getenv("DASHSCOPE_API_KEY")
+    api_key = get_env_value("DASHSCOPE_API_KEY")
     if not api_key:
         raise click.ClickException("未配置 DASHSCOPE_API_KEY")
 
@@ -121,7 +127,7 @@ def create_voice_command(audio_url, target_model, prefix):
     # 步骤6：输出便于 AI 解析的 JSON 结果。
     result = {
         "voice_id": voice_id,
-        "target_model": output_data.get("target_model"),
+        "target_model": target_model,
         "request_id": response_data.get("request_id"),
         "usage": response_data.get("usage"),
     }

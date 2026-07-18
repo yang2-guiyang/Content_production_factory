@@ -24,7 +24,6 @@ class FakeResponse:
         return {
             "output": {
                 "voice_id": "qwen-audio-test-voice",
-                "target_model": "qwen-audio-3.0-tts-flash",
             },
             "usage": {
                 "count": 1,
@@ -54,6 +53,15 @@ class FakeSession:
 
 
 # ---------------------------
+# 函数说明：为命令测试提供固定密钥。
+# ---------------------------
+def get_test_env_value(env_key):
+    if env_key == "DASHSCOPE_API_KEY":
+        return "test-api-key"
+    return None
+
+
+# ---------------------------
 # 类说明：验证 Qwen-Audio-TTS 声音复刻命令的外部行为。
 # ---------------------------
 class VoiceCommandsTestCase(unittest.TestCase):
@@ -64,10 +72,12 @@ class VoiceCommandsTestCase(unittest.TestCase):
         # 步骤1：保存原始环境，避免测试污染本机配置。
         self.original_api_key = os.environ.get("DASHSCOPE_API_KEY")
         self.original_session = voice_commands.requests.Session
+        self.original_get_env_value = getattr(voice_commands, "get_env_value", None)
 
         # 步骤2：配置测试密钥和固定网络响应。
         os.environ["DASHSCOPE_API_KEY"] = "test-api-key"
         voice_commands.requests.Session = FakeSession
+        voice_commands.get_env_value = get_test_env_value
 
     # ---------------------------
     # 函数说明：恢复测试前的环境。
@@ -75,6 +85,11 @@ class VoiceCommandsTestCase(unittest.TestCase):
     def tearDown(self):
         # 步骤1：恢复网络会话。
         voice_commands.requests.Session = self.original_session
+        if self.original_get_env_value is None:
+            if hasattr(voice_commands, "get_env_value"):
+                delattr(voice_commands, "get_env_value")
+        else:
+            voice_commands.get_env_value = self.original_get_env_value
 
         # 步骤2：恢复 API Key。
         if self.original_api_key is None:
@@ -104,6 +119,10 @@ class VoiceCommandsTestCase(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         result_data = json.loads(result.output)
         self.assertEqual(result_data["voice_id"], "qwen-audio-test-voice")
+        self.assertEqual(
+            result_data["target_model"],
+            "qwen-audio-3.0-tts-flash",
+        )
 
         # 步骤3：核对发送给接口的固定协议。
         self.assertEqual(FakeSession.request_data["model"], "voice-enrollment")
@@ -133,6 +152,27 @@ class VoiceCommandsTestCase(unittest.TestCase):
         # 步骤2：确认 Click 返回模型取值错误。
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("qwen-audio-3.0-tts-flash", result.output)
+
+    # ---------------------------
+    # 函数说明：验证命令通过 .env 读取模块获取密钥。
+    # ---------------------------
+    def test_create_uses_env_reader(self):
+        # 步骤1：移除系统环境变量并替换 .env 读取函数。
+        del os.environ["DASHSCOPE_API_KEY"]
+        voice_commands.get_env_value = get_test_env_value
+
+        # 步骤2：执行声音复刻命令。
+        runner = CliRunner()
+        result = runner.invoke(
+            voice_commands.cli,
+            [
+                "create",
+                "https://example.com/voice.wav",
+            ],
+        )
+
+        # 步骤3：确认命令通过读取模块获得密钥并成功执行。
+        self.assertEqual(result.exit_code, 0, result.output)
 
 
 if __name__ == "__main__":
