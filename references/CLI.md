@@ -45,7 +45,7 @@ python scripts/commands/speech_recognition_commands.py recognize <音频文件>
 **示例：**
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py recognize "FBAFB6CA-3EE7-42cd-B256-AF255C40D577.mp3"
+python scripts/commands/speech_recognition_commands.py recognize "runtime/inputs/FBAFB6CA-3EE7-42cd-B256-AF255C40D577.mp3"
 ```
 
 **输出示例：**
@@ -166,7 +166,7 @@ python scripts/commands/env_writer.py remove
 | 固定模型 | `qwen3-asr-flash` |
 | 最小 API 验证 | 已完成 |
 | Click 命令 | 已完成 |
-| 本地测试音频 | `FBAFB6CA-3EE7-42cd-B256-AF255C40D577.mp3` |
+| 本地测试音频 | `runtime/inputs/FBAFB6CA-3EE7-42cd-B256-AF255C40D577.mp3` |
 | 统一入口 | 待 Step 4 创建 |
 | Windows exe | 默认不创建；仅用户明确要求打包时进入可选 Step 5 |
 
