@@ -1,8 +1,6 @@
-import base64
 import io
 import json
 import os
-import pathlib
 import sys
 
 # 步骤0：直接运行本命令模块时，先解决 Windows 控制台 GBK 乱码。
@@ -14,9 +12,12 @@ import requests
 
 
 API_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization"
-DEFAULT_TARGET_MODEL = "qwen3-tts-vc-2026-01-22"
-DEFAULT_PREFERRED_NAME = "myvoice"
-MAXIMUM_AUDIO_FILE_SIZE = 10 * 1024 * 1024
+DEFAULT_TARGET_MODEL = "qwen-audio-3.0-tts-flash"
+DEFAULT_VOICE_PREFIX = "myvoice"
+QWEN_AUDIO_TTS_MODELS = (
+    "qwen-audio-3.0-tts-flash",
+    "qwen-audio-3.0-tts-plus",
+)
 
 
 # ---------------------------
@@ -33,70 +34,51 @@ def cli():
 # ---------------------------
 @cli.command(name="create")
 @click.argument(
-    "audio_file",
-    metavar="<音频文件>",
-    type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path),
+    "audio_url",
+    metavar="<音频URL>",
 )
 @click.option(
     "--target-model",
     default=DEFAULT_TARGET_MODEL,
     show_default=True,
+    type=click.Choice(QWEN_AUDIO_TTS_MODELS, case_sensitive=True),
     metavar="<模型名称>",
-    help="音色绑定的 Qwen-TTS 模型，如 qwen3-tts-vc-2026-01-22",
+    help="音色绑定的 Qwen-Audio-TTS 模型，如 qwen-audio-3.0-tts-flash",
 )
 @click.option(
-    "--name",
-    "preferred_name",
-    default=DEFAULT_PREFERRED_NAME,
+    "--prefix",
+    default=DEFAULT_VOICE_PREFIX,
     show_default=True,
-    metavar="<音色名称>",
-    help="音色名称前缀，仅使用英文字母和数字，如 narrator1",
+    metavar="<音色前缀>",
+    help="音色 ID 前缀，仅使用英文字母和数字，如 narrator1",
 )
-def create_voice_command(audio_file, target_model, preferred_name):
-    """使用本地音频创建 Qwen-TTS 音色（例: python scripts/main.py voice create voice.wav --name narrator1）"""
+def create_voice_command(audio_url, target_model, prefix):
+    """使用公网音频创建 Qwen-Audio-TTS 音色（例: python scripts/main.py voice create https://example.com/voice.wav --prefix narrator1）"""
     # 步骤1：读取 API Key。
     api_key = os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
         raise click.ClickException("未配置 DASHSCOPE_API_KEY")
 
-    # 步骤2：检查音频格式和文件大小。
-    audio_extension = audio_file.suffix.lower()
-    if audio_extension == ".wav":
-        audio_mime_type = "audio/wav"
-    elif audio_extension == ".mp3":
-        audio_mime_type = "audio/mpeg"
-    elif audio_extension == ".m4a":
-        audio_mime_type = "audio/mp4"
-    else:
-        raise click.ClickException("仅支持 WAV、MP3、M4A 音频文件")
+    # 步骤2：检查音频 URL。
+    if not audio_url.startswith("https://") and not audio_url.startswith("http://"):
+        raise click.ClickException("音频 URL 必须以 http:// 或 https:// 开头")
 
-    audio_file_size = audio_file.stat().st_size
-    if audio_file_size > MAXIMUM_AUDIO_FILE_SIZE:
-        raise click.ClickException("音频文件不能超过 10 MB")
-
-    # 步骤3：把本地音频转换为接口接受的 data URI。
-    audio_bytes = audio_file.read_bytes()
-    encoded_audio = base64.b64encode(audio_bytes).decode("ascii")
-    audio_data_uri = "data:" + audio_mime_type + ";base64," + encoded_audio
-
-    # 步骤4：准备请求头和请求数据。
+    # 步骤3：准备请求头和请求数据。
     headers = {
         "Authorization": "Bearer " + api_key,
         "Content-Type": "application/json",
     }
     data = {
-        "model": "qwen-voice-enrollment",
+        "model": "voice-enrollment",
         "input": {
-            "action": "create",
+            "action": "create_voice",
             "target_model": target_model,
-            "preferred_name": preferred_name,
-            "audio": {
-                "data": audio_data_uri,
-            },
+            "prefix": prefix,
+            "url": audio_url,
         },
     }
 
-    # 步骤5：发送声音复刻请求。
+    # 步骤4：发送声音复刻请求。
     try:
         session = requests.Session()
         session.trust_env = False
@@ -104,7 +86,7 @@ def create_voice_command(audio_file, target_model, preferred_name):
             API_URL,
             headers=headers,
             json=data,
-            timeout=30,
+            timeout=120,
         )
     except requests.exceptions.Timeout:
         raise click.ClickException("请求超时，请检查网络后重试")
@@ -113,7 +95,7 @@ def create_voice_command(audio_file, target_model, preferred_name):
     except requests.exceptions.RequestException as error:
         raise click.ClickException("请求失败：" + str(error))
 
-    # 步骤6：解析并检查接口响应。
+    # 步骤5：解析并检查接口响应。
     try:
         response_data = response.json()
     except ValueError:
@@ -132,11 +114,11 @@ def create_voice_command(audio_file, target_model, preferred_name):
     if not output_data:
         raise click.ClickException("响应中缺少 output 字段")
 
-    voice_id = output_data.get("voice")
+    voice_id = output_data.get("voice_id")
     if not voice_id:
-        raise click.ClickException("响应中缺少 output.voice 字段")
+        raise click.ClickException("响应中缺少 output.voice_id 字段")
 
-    # 步骤7：输出便于 AI 解析的 JSON 结果。
+    # 步骤6：输出便于 AI 解析的 JSON 结果。
     result = {
         "voice_id": voice_id,
         "target_model": output_data.get("target_model"),
