@@ -1,8 +1,8 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前包含 2 个命令组和 11 个子命令。
+本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前包含 2 个独立命令组和 11 个子命令。
 
-> 当前已完成语音识别 Step 2，尚未创建统一入口 `scripts/main.py`。用户未要求打包，因此不会创建 exe。统一入口完成后，必须重新运行全部 `--help` 并更新本清单。
+> 当前通过两个独立 Python 入口调用 CLI。工程没有 `scripts/main.py`，按现行开发流程不需要为了统一入口而主动创建；工程也没有打包产物，用户未明确要求首次打包时不创建 exe。
 
 ## 当前命令概览
 
@@ -29,11 +29,28 @@ python scripts/commands/env_writer.py --help
 python scripts/commands/env_writer.py <status|set|remove> --help
 ```
 
+> 当前源码的部分命令简介仍包含尚不存在的 `python scripts/main.py ...` 示例。统一入口创建前，请以本清单中的独立脚本命令为准。
+
+## 当前适用范围与已知限制
+
+| 项目 | 当前行为 | 尚未通过 CLI 暴露的能力 |
+|---|---|---|
+| 本地短音频 | `recognize` 和 `recognize-context` 接受本地文件 | `recognize` 未主动检查 10 MB、5 分钟上限 |
+| 长音频 | `transcribe-long` 和 `transcribe-advanced` 只接受公网 HTTP/HTTPS URL | 不能直接提交本地长音频，也没有 OSS 上传命令 |
+| 语言与 ITN | 短音频自动识别语言；高级转写支持重复传入 `--language-hint` | `recognize` 和 `transcribe-long` 不能指定语言，`enable_itn` 固定为 `false` |
+| 音频通道 | 长音频和高级转写固定处理 `channel_id=[0]` | 不能选择其他通道或执行多通道转写 |
+| 上下文增强 | 支持一段不超过 400 字符的用户上下文 | 不支持多轮 `user` / `assistant` 上下文消息 |
+| 热词 | 支持创建、查询、列表、删除和在转写时使用热词表 | 同一条创建命令中的全部热词共用一个权重和语言，不能逐词设置 |
+| 流式与生产回调 | 当前使用同步响应或异步轮询 | 未封装流式输出、EventBridge 回调和批量任务调度 |
+| Skill 路由 | CLI 可直接运行 | 根目录尚无 `SKILL.md`，当前不能作为可自动激活和路由的完整 Skill 使用 |
+
 ## 语音识别
 
 ### `recognize`
 
 **用途：** 使用固定模型 `qwen3-asr-flash` 识别不超过 5 分钟、10 MB 的本地音频，同时返回文本、情感和语言标注。
+
+**当前限制：** 模型自动判断语言，CLI 不能指定语言；ITN 固定关闭；代码尚未在提交前主动检查 10 MB 和 5 分钟限制，超限文件由接口返回错误。
 
 **完整语法：**
 
@@ -79,6 +96,8 @@ python scripts/commands/speech_recognition_commands.py recognize "runtime/inputs
 
 **用途：** 使用固定模型 `fun-asr-flash-2026-06-15` 和领域词汇或前文增强本地短音频识别准确率。
 
+**当前限制：** 只支持一段 `user` 上下文文本，不支持多轮 `user` / `assistant` 上下文消息。
+
 **完整语法：**
 
 ```powershell
@@ -117,6 +136,8 @@ python scripts/commands/speech_recognition_commands.py recognize-context "runtim
 ### `transcribe-long`
 
 **用途：** 使用固定模型 `qwen3-asr-flash-filetrans` 异步转写公网音频 URL，支持最长 12 小时、2 GB，并返回句级或字级时间戳和情感字段。
+
+**当前限制：** 只接受公网 URL，不能直接传入本地长音频；固定处理通道 `0`，ITN 固定关闭，不能通过 CLI 指定语言。
 
 **完整语法：**
 
@@ -181,6 +202,8 @@ python scripts/commands/speech_recognition_commands.py transcribe-long "https://
 ### `hotword-create`
 
 **用途：** 创建固定绑定 `fun-asr` 的热词表，供 `transcribe-advanced --vocabulary-id` 使用。
+
+**当前限制：** 一次命令中的全部 `--word` 共用同一个 `--weight` 和 `--language`，不能为每个热词分别设置权重或语言。
 
 **完整语法：**
 
@@ -317,6 +340,8 @@ python scripts/commands/speech_recognition_commands.py hotword-delete "vocab-cod
 ### `transcribe-advanced`
 
 **用途：** 使用固定模型 `fun-asr` 对公网音频执行异步转写，可组合使用热词、说话人分离、敏感词替换或移除、语言提示。完整结果固定包含 Fun-ASR 的句级和词级时间戳。
+
+**当前限制：** 只接受公网 URL 并固定处理通道 `0`；Fun-ASR 不支持情感识别，情感字段应使用 `recognize` 或 `transcribe-long` 获取。
 
 **完整语法：**
 
@@ -469,14 +494,15 @@ python scripts/commands/env_writer.py remove
 
 ## 当前封装状态
 
-| 项目 | 当前状态 |
-|---|---|
-| 短音频文本、情感和语言 | 已完成并实测 |
-| 上下文增强 | 已完成并实测 |
-| 长音频异步转写 | 已完成并使用超过 5 分钟人声音频实测 |
-| 句级和字级时间戳 | 已完成并实测 |
-| 热词创建、查询、列表和删除 | 已完成并实测，无残留测试词表 |
-| 说话人分离 | 已完成并实测 `speaker_id` |
-| 敏感词替换 | 已完成并实测等长星号替换 |
-| 统一入口 | 待 Step 4 创建 |
-| Windows exe | 默认不创建；仅用户明确要求打包时进入可选 Step 5 |
+| 项目 | 当前状态 | 2026-07-19 本轮检查 |
+|---|---|---|
+| 短音频文本、情感和语言 | 已封装 | 真实 CLI 通过，返回 `emotion=neutral`、`language=zh` |
+| 上下文增强 | 已封装单轮文本上下文 | 真实 CLI 通过 |
+| 长音频异步转写 | 已封装公网 URL | 真实 CLI 通过；历史已使用超过 5 分钟人声音频验证 |
+| 句级和字级时间戳 | 已封装 | 字级时间戳真实 CLI 通过 |
+| 热词创建、查询、列表和删除 | 已封装 | 本轮只执行无写操作的列表查询；创建和删除沿用历史实测结果 |
+| 说话人分离 | 已封装 | 真实 CLI 通过并返回 `speaker_id` |
+| 敏感词替换和移除 | 已封装 | `阿里巴巴` 替换为 `****`，`实验室` 成功移除 |
+| 统一入口 | 未创建，当前不强制 | 使用两个独立 Python 入口 |
+| 根 `SKILL.md` | 未创建 | 尚未形成可自动激活和路由的完整 Skill |
+| Windows exe | 未创建，当前不进入打包阶段 | 工程无打包文件，用户未要求首次打包 |
