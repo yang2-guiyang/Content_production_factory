@@ -2,7 +2,7 @@
 
 本清单基于 2026-07-18 当前源码和实际 `--help` 输出编写。目前包含 2 个命令组和 4 个子命令。
 
-> 当前已完成语音识别 Step 2，尚未创建统一入口 `scripts/main.py` 或 exe。统一入口完成后，必须重新运行全部 `--help` 并更新本清单。
+> 当前已完成基础语音识别 Step 2，尚未创建统一入口 `scripts/main.py`。用户未要求打包，因此不会创建 exe。统一入口完成后，必须重新运行全部 `--help` 并更新本清单。
 
 ## 当前命令概览
 
@@ -168,6 +168,6 @@ python scripts/commands/env_writer.py remove
 | Click 命令 | 已完成 |
 | 本地测试音频 | `FBAFB6CA-3EE7-42cd-B256-AF255C40D577.mp3` |
 | 统一入口 | 待 Step 4 创建 |
-| Windows exe | 待 Step 5 创建 |
+| Windows exe | 默认不创建；仅用户明确要求打包时进入可选 Step 5 |
 
 当前命令固定使用 `qwen3-asr-flash`。该模型在当前封装中不提供热词和上下文增强参数。
