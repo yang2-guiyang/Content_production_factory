@@ -1,0 +1,7 @@
+scripts/.env
+runtime/
+build/
+dist/
+__pycache__/
+*.pyc
+.venv/
