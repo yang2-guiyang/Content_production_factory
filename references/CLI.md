@@ -1,8 +1,8 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-20 当前源码、真实 `--help` 和实际 API 调用结果编写。目前统一入口包含 5 个命令组和 25 个子命令。
+本清单基于 2026-07-20 当前源码、真实 `--help` 和实际 API 调用结果编写。目前统一入口包含 6 个命令组和 26 个子命令。
 
-> 首选入口是 `python scripts/main.py <命令组> <子命令>`。`scripts/commands/` 下的五个独立 Python 入口继续保留，用于兼容已有调用和开发调试。工程没有打包产物，用户未明确要求首次打包时不创建 exe。
+> 首选入口是 `python scripts/main.py <命令组> <子命令>`。`scripts/commands/` 下的六个独立 Python 入口继续保留，用于兼容已有调用和开发调试。工程没有打包产物，用户未明确要求首次打包时不创建 exe。
 
 ## 全局默认质量策略
 
@@ -24,6 +24,7 @@
 
 | 命令组 | 子命令 | 用途 |
 |---|---|---|
+| 本地媒体处理 | `extract-audio` | 最高保真抽取视频或媒体文件中的音轨 |
 | 文件管理 | `upload` | 上传一个或多个本地文件并返回 `file_id` 和签名 URL |
 | 文件管理 | `get` | 查询文件属性和当前签名 URL |
 | 文件管理 | `list` | 分页列举当前账号的有效文件 |
@@ -56,6 +57,8 @@
 python scripts/main.py --help
 python scripts/main.py file --help
 python scripts/main.py file <upload|get|list|delete> --help
+python scripts/main.py media --help
+python scripts/main.py media extract-audio --help
 python scripts/main.py speech --help
 python scripts/main.py speech <子命令> --help
 python scripts/main.py tts --help
@@ -70,6 +73,7 @@ python scripts/main.py key <status|set|remove> --help
 
 | 能力 | 统一入口前缀 | 兼容的独立入口 |
 |---|---|---|
+| 本地媒体处理 | `python scripts/main.py media` | `python scripts/commands/media_processing_commands.py` |
 | 百炼文件管理 | `python scripts/main.py file` | `python scripts/commands/file_management_commands.py` |
 | 语音识别 | `python scripts/main.py speech` | `python scripts/commands/speech_recognition_commands.py` |
 | 声音复刻与语音合成 | `python scripts/main.py tts` | `python scripts/commands/speech_synthesis_commands.py` |
@@ -80,6 +84,7 @@ python scripts/main.py key <status|set|remove> --help
 
 | 项目 | 当前行为 | 尚未通过 CLI 暴露的能力 |
 |---|---|---|
+| 视频音轨抽取 | AAC、MP3、FLAC、Opus、Vorbis 优先原样复制；其他编码转无损 FLAC，保留采样率和声道布局 | 不执行降噪、人声增强、降采样或声道混合 |
 | 百炼文件管理 | 支持多文件上传、详情与 URL 查询、分页列表和批量删除；默认 `file-extract` | 接口仅在北京 Region 开放；签名 URL 会变化，不是永久公网地址 |
 | 本地短音频 | `recognize` 接受本地文件，支持 Qwen System Context、单一语言和 ITN；`recognize-context` 保留 Fun-ASR-Flash 方案 | `recognize` 未主动检查 10 MB、5 分钟上限 |
 | 长音频 | `transcribe-long` 和 `transcribe-advanced` 只接受 HTTP/HTTPS URL；本地文件可先通过 `file upload` 取得签名 URL | 识别命令不会自动上传本地文件，需要显式执行两步 |
@@ -273,6 +278,59 @@ python scripts/main.py file delete "<文件ID1>" "<文件ID2>"
 ```
 
 > 本轮真实 CLI 批量删除两个测试文件成功，`failed_deletions=[]`；删除后列表总数从 5 恢复为 3，再次查询已删除 ID 返回 `File not found.`。
+
+---
+
+## 本地媒体处理
+
+### `extract-audio`
+
+**用途：** 从本地视频或其他媒体容器中抽取指定音轨。默认按源编码选择最高保真输出：AAC→M4A、MP3→MP3、FLAC→FLAC、Opus/Vorbis→OGG，复制压缩数据包而不解码或重编码；其他编码转为无损 FLAC，并保留源采样率和声道布局。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py media extract-audio <本地视频或媒体文件> [--output <音频文件>] [--audio-stream <音轨位置>] [--overwrite]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<本地视频或媒体文件>` | PyAV 可以读取的本地视频或媒体文件 | 是 | 文件必须存在并至少包含一条音轨 |
+| `--output <音频文件>` | 指定输出文件；`.flac` 可明确要求无损转码 | 否 | 默认写入 `runtime/outputs/<输入名>-audio.<自动扩展名>` |
+| `--audio-stream <音轨位置>` | 按音轨在文件中的出现顺序选择，从 0 开始 | 否 | 默认 `0`，最小值 `0` |
+| `--overwrite` | 允许覆盖已存在的输出文件 | 否 | 默认不覆盖 |
+
+**示例：**
+
+```powershell
+python scripts/main.py media extract-audio "runtime/inputs/13426251338329580.mp4"
+```
+
+**输出示例：**
+
+```json
+{
+  "mode": "stream_copy",
+  "bit_exact": true,
+  "source_codec": "aac",
+  "output_codec": "aac",
+  "sample_rate": 44100,
+  "channels": 2,
+  "channel_layout": "stereo",
+  "audio_stream_position": 0,
+  "audio_stream_count": 1,
+  "packet_count": 1859,
+  "input_file": "C:\\path\\to\\13426251338329580.mp4",
+  "output_file": "C:\\path\\to\\runtime\\outputs\\13426251338329580-audio.m4a",
+  "output_size": 698907
+}
+```
+
+> `bit_exact=true` 表示输出中的压缩音频数据包与源音轨逐包一致。FLAC 回退会显示 `mode=lossless_flac` 和 `bit_exact=false`：压缩包编码已经变化，但解码后的音频仍为无损，并且不会自动降采样、转单声道、降噪或做人声增强。
+
+> 本轮真实 CLI 从 13 MB MP4 中抽取 698907 字节 M4A，输入与输出的 1859 个 AAC 包 SHA-256 完全一致。抽取结果随后通过百炼 Filetrans 识别出完整口播、字级时间戳和 8 条 SRT 字幕。
 
 ---
 
@@ -1287,6 +1345,8 @@ python scripts/commands/env_writer.py remove
 
 | 项目 | 当前状态 | 2026-07-20 本轮检查 |
 |---|---|---|
+| 视频音轨最高保真抽取 | 已封装 | 真实 MP4 的 1859 个 AAC 数据包逐包哈希一致，44100 Hz 双声道保持不变；PCM→FLAC 回退验证通过 |
+| 视频口播识别链路 | 已验证 | 抽取 M4A 经文件上传和 Filetrans 返回完整口播、字级时间戳及 8 条 SRT，云端测试文件已删除 |
 | 百炼多文件上传与 URL | 已封装 | 真实上传 MP3、JPEG 和 13 MB MP4，均返回 `file_id` 和签名 URL；URL 已分别用于 Filetrans、图片理解和视频理解任务 |
 | 文件详情、列表和删除 | 已封装 | 详情与分页列表真实通过；两个测试文件批量删除成功，删除后再次查询返回 `File not found.` |
 | 短音频文本、情感和语言 | 已封装 | 最新快照真实 CLI 通过，支持 `--language` 和 ITN，返回 `emotion=neutral`、`language=zh` |
@@ -1307,6 +1367,6 @@ python scripts/commands/env_writer.py remove
 | 视觉最高质量默认 | 已封装 | 未传质量参数时真实返回 `qwen3.7-plus`、`thinking=true`、`high_resolution=true` |
 | Qwen-OCR 七种图片任务 | 已封装 | 默认 `qwen3.5-ocr` 与 `rotate=true` 真实 CLI 通过；信息抽取返回 `ocr_result.kv_result` |
 | Qwen-OCR PDF 解析 | 已封装公网 URL | 真实 CLI 通过并返回文本与 `ocr_result.layouts` |
-| 统一入口 | 已创建 | `scripts/main.py` 注册 `file`、`speech`、`tts`、`visual`、`key` 五个命令组，独立入口继续兼容 |
+| 统一入口 | 已创建 | `scripts/main.py` 注册 `media`、`file`、`speech`、`tts`、`visual`、`key` 六个命令组，独立入口继续兼容 |
 | 根 `SKILL.md` | 已创建 | 可按文件、语音和视觉意图路由到本清单 |
 | Windows exe | 未创建，当前不进入打包阶段 | 工程无打包文件，用户未要求首次打包 |

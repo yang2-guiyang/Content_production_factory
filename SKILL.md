@@ -1,6 +1,6 @@
 ---
 name: content-production-factory
-description: 提供百炼多文件上传、file_id 与签名 URL 管理、语音识别、Qwen System Context 准确率增强、长音频时间戳与 SRT 字幕导出、Qwen-Audio-TTS 声音复刻与非实时语音合成、视觉理解和 Qwen-OCR CLI。用于用户需要把本地音频、视频、图片或文档上传后跨任务复用，查询、列举或删除百炼文件，以及处理语音、图片、视频、OCR 和 PDF 时。
+description: 提供视频音轨无损抽取、百炼多文件上传、file_id 与签名 URL 管理、语音识别、Qwen System Context 准确率增强、长音频时间戳与 SRT 字幕导出、Qwen-Audio-TTS 声音复刻与非实时语音合成、视觉理解和 Qwen-OCR CLI。用于用户需要从本地视频提取口播音轨并生成文案或字幕，把音频、视频、图片或文档上传后跨任务复用，以及处理语音、图片、视频、OCR 和 PDF 时。
 ---
 
 # Content Production Factory
@@ -14,9 +14,11 @@ description: 提供百炼多文件上传、file_id 与签名 URL 管理、语音
 5. 默认通过 `python scripts/main.py <命令组> <子命令>` 调用；`scripts/commands/` 下的独立入口仅用于兼容和开发调试。
 6. 除非用户明确要求降低成本、缩短延迟或指定其他模型，否则保留 `references/CLI.md` 规定的最高质量默认模型和参数，不自动切换到 Flash 或关闭质量选项。
 7. URL 输入命令遇到本地文件时，先用 `file upload` 获得 `file_id` 和签名 URL；长期保存 `file_id`，任务执行前用 `file get` 刷新 URL。
+8. 视频口播识别先用 `media extract-audio` 无损抽取音轨，再按时长和功能选择 `speech` 命令；不要用只分析画面的 `visual analyze-video` 识别口播。
 
 ## 路由
 
+- 从本地视频提取原始口播音轨：使用 `media extract-audio`；优先原样复制兼容编码，不兼容时转无损 FLAC。
 - 上传一个或多个本地音频、视频、图片、PDF 或其他文档并取得可复用 URL：使用 `file upload`。
 - 查询文件当前 URL、分页列举文件或删除文件释放配额：使用 `file get`、`file list` 或 `file delete`。
 - 本地短音频高准确率识别：使用 `speech recognize --language <语言> --context <背景和实体词>`。

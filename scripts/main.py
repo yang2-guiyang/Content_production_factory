@@ -8,6 +8,7 @@ import click
 
 from commands.env_writer import cli as key_cli
 from commands.file_management_commands import cli as file_cli
+from commands.media_processing_commands import cli as media_cli
 from commands.speech_recognition_commands import cli as speech_cli
 from commands.speech_synthesis_commands import cli as tts_cli
 from commands.visual_understanding_commands import cli as visual_cli
@@ -18,7 +19,7 @@ from commands.visual_understanding_commands import cli as visual_cli
 # ---------------------------
 @click.group()
 def cli():
-    """统一调用文件、语音、视觉和密钥管理命令。"""
+    """统一调用文件、媒体、语音、视觉和密钥管理命令。"""
     pass
 
 
@@ -34,10 +35,13 @@ cli.add_command(visual_cli, name="visual")
 # 步骤4：注册百炼文件管理命令组。
 cli.add_command(file_cli, name="file")
 
-# 步骤5：注册 API 密钥管理命令组。
+# 步骤5：注册本地媒体处理命令组。
+cli.add_command(media_cli, name="media")
+
+# 步骤6：注册 API 密钥管理命令组。
 cli.add_command(key_cli, name="key")
 
 
 if __name__ == "__main__":
-    # 步骤6：启动统一 CLI 入口。
+    # 步骤7：启动统一 CLI 入口。
     cli()
