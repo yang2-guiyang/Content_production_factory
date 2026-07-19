@@ -2,7 +2,7 @@
 
 Content Production Factory 是一套面向 AI 和开发者的 Skill 文件包开发规范，统一约定 Skill 的架构、CLI 设计、编码风格、鉴权、打包、测试和文档格式。
 
-本仓库当前提供开发规范，不是可直接运行的 Skill 成品。完整规则见 [SKILL 开发说明](./SKILL开发说明.md)。
+本仓库提供 Skill 开发规范，并包含可直接运行的语音识别和视觉理解独立 CLI。完整开发规则见 [SKILL 开发说明](./SKILL开发说明.md)，命令用法见 [CLI 命令清单](./references/CLI.md)。
 
 ## 核心架构
 
@@ -33,6 +33,14 @@ list-groups -> list-commands <group> -> <group> <command> --help -> execute
 - 测试新能力时只写最小脚本并停止；用户要求 CLI 时自动执行适用的 2～7 更新循环
 - SOP 默认不做，主要功能和 CLI 完成后仍需用户明确要求
 
+## 当前 CLI
+
+- `scripts/commands/speech_recognition_commands.py`：短音频、长音频、热词、上下文增强、说话人分离、敏感词、情感和时间戳
+- `scripts/commands/visual_understanding_commands.py`：单图、多图、视频文件和视频帧理解
+- `scripts/commands/env_writer.py`：DashScope API Key 状态、设置和删除
+
+当前使用独立 Python 入口，没有 `scripts/main.py`。工程没有打包文件，用户未明确要求首次打包时不生成 exe。
+
 ## 推荐阅读顺序
 
 1. 阅读“Skill 是什么”，理解执行层、路由层、参考层和操作层
@@ -51,3 +59,5 @@ list-groups -> list-commands <group> -> <group> <command> --help -> execute
 |---|---|
 | [README.md](./README.md) | 仓库入口和规范摘要 |
 | [SKILL开发说明.md](./SKILL开发说明.md) | 完整 Skill 开发规范、模板和检查清单 |
+| [SKILL.md](./SKILL.md) | 语音识别与视觉理解意图路由 |
+| [references/CLI.md](./references/CLI.md) | 完整 CLI 命令、参数、限制和真实示例 |

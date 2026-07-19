@@ -1,8 +1,8 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前包含 2 个独立命令组和 11 个子命令。
+本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前包含 3 个独立命令组和 14 个子命令。
 
-> 当前通过两个独立 Python 入口调用 CLI。工程没有 `scripts/main.py`，按现行开发流程不需要为了统一入口而主动创建；工程也没有打包产物，用户未明确要求首次打包时不创建 exe。
+> 当前通过三个独立 Python 入口调用 CLI。工程没有 `scripts/main.py`，按现行开发流程不需要为了统一入口而主动创建；工程也没有打包产物，用户未明确要求首次打包时不创建 exe。
 
 ## 当前命令概览
 
@@ -16,6 +16,9 @@
 | 语音识别 | `hotword-status` | 查询热词表状态 |
 | 语音识别 | `hotword-list` | 列出热词表 |
 | 语音识别 | `hotword-delete` | 删除热词表 |
+| 视觉理解 | `analyze-images` | 分析单图或多图，完成问答、OCR、定位和文档解析等任务 |
+| 视觉理解 | `analyze-video` | 分析本地或公网视频文件 |
+| 视觉理解 | `analyze-frames` | 把至少四张连续图片作为视频帧分析 |
 | 密钥管理 | `status` | 检查 API Key 是否已配置 |
 | 密钥管理 | `set` | 新增或更新 API Key |
 | 密钥管理 | `remove` | 删除 API Key |
@@ -25,6 +28,8 @@
 ```powershell
 python scripts/commands/speech_recognition_commands.py --help
 python scripts/commands/speech_recognition_commands.py <子命令> --help
+python scripts/commands/visual_understanding_commands.py --help
+python scripts/commands/visual_understanding_commands.py <子命令> --help
 python scripts/commands/env_writer.py --help
 python scripts/commands/env_writer.py <status|set|remove> --help
 ```
@@ -42,7 +47,7 @@ python scripts/commands/env_writer.py <status|set|remove> --help
 | 上下文增强 | 支持一段不超过 400 字符的用户上下文 | 不支持多轮 `user` / `assistant` 上下文消息 |
 | 热词 | 支持创建、查询、列表、删除和在转写时使用热词表 | 同一条创建命令中的全部热词共用一个权重和语言，不能逐词设置 |
 | 流式与生产回调 | 当前使用同步响应或异步轮询 | 未封装流式输出、EventBridge 回调和批量任务调度 |
-| Skill 路由 | CLI 可直接运行 | 根目录尚无 `SKILL.md`，当前不能作为可自动激活和路由的完整 Skill 使用 |
+| Skill 路由 | 根 `SKILL.md` 根据语音或视觉任务选择命令 | 详细参数统一从本清单读取 |
 
 ## 语音识别
 
@@ -406,6 +411,195 @@ python scripts/commands/speech_recognition_commands.py transcribe-advanced "http
 }
 ```
 
+## 视觉理解
+
+视觉理解统一使用 DashScope 多模态接口，默认模型为 `qwen3.7-plus`。任务类型由提示词决定，同一个图片命令可完成描述、问答、OCR、信息抽取、物体定位、文档解析、题目解答和创意写作。
+
+### `analyze-images`
+
+**用途：** 分析一张或多张本地图片、Data URL 或公网图片 URL。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-images --image <图片路径或URL> [--image <图片路径或URL> ...] --prompt <问题或任务> [--model <模型名称>] [--thinking|--no-thinking] [--thinking-budget <Token数>] [--high-resolution|--standard-resolution] [--min-pixels <像素数>] [--max-pixels <像素数>] [--max-tokens <Token数>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--image <图片路径或URL>` | 输入图片，可重复传入多张 | 是 | 本地文件、Data URL、HTTP/HTTPS URL |
+| `--prompt <问题或任务>` | 描述模型需要完成的视觉任务 | 是 | 任意文本 |
+| `--model <模型名称>` | 使用的百炼视觉模型 | 否 | 默认 `qwen3.7-plus` |
+| `--thinking` / `--no-thinking` | 是否返回模型思考过程 | 否 | 默认 `--no-thinking` |
+| `--thinking-budget <Token数>` | 思考过程最大 Token 数 | 否 | 正整数 |
+| `--high-resolution` / `--standard-resolution` | 是否启用高分辨率图像模式 | 否 | 默认标准分辨率 |
+| `--min-pixels <像素数>` | 每张图片的最小像素阈值 | 否 | 正整数 |
+| `--max-pixels <像素数>` | 标准分辨率模式的最大像素阈值 | 否 | 正整数；不能与 `--high-resolution` 同时使用 |
+| `--max-tokens <Token数>` | 最终回复最大 Token 数 | 否 | 默认 `2048` |
+
+**支持的本地图像格式：** BMP、HEIC、JPEG、PNG、TIFF、WEBP。本地图片不能超过 10 MB。
+
+**单图描述示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-images --image "runtime/inputs/visual-dog-and-girl.jpeg" --prompt "请只用一句中文描述图片。"
+```
+
+**多图比较示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-images --image "runtime/inputs/a.jpg" --image "runtime/inputs/b.jpg" --prompt "分别描述两张图片并说明主要区别。"
+```
+
+**OCR 和信息抽取示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-images --image "runtime/inputs/invoice.png" --prompt "提取发票代码、发票号码和金额，以 JSON 输出。" --high-resolution
+```
+
+**物体定位示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-images --image "runtime/inputs/food.jpg" --prompt "检测所有食物，以 JSON 输出 label 和 bbox 坐标。"
+```
+
+**文档解析示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-images --image "runtime/inputs/document.png" --prompt "qwenvl markdown"
+```
+
+**思考模式示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-images --image "runtime/inputs/question.png" --prompt "分步骤解答图片中的题目。" --thinking --thinking-budget 4096
+```
+
+**输出示例：**
+
+```json
+{
+  "text": "在夕阳金色的海滩上，一位年轻女子微笑着与她的拉布拉多犬握手互动。",
+  "reasoning_content": "",
+  "model": "qwen3.7-plus",
+  "thinking": false,
+  "high_resolution": false,
+  "finish_reason": "stop",
+  "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "usage": {
+    "input_tokens": 2526,
+    "output_tokens": 25,
+    "image_tokens": 2503
+  },
+  "input_type": "images",
+  "inputs": [
+    "file://C:/path/to/image.jpeg"
+  ],
+  "prompt": "请只用一句中文描述图片。"
+}
+```
+
+### `analyze-video`
+
+**用途：** 分析一个本地或公网视频文件，生成摘要、动作描述、事件定位或提示词要求的时间戳结果。模型只理解视频画面，不理解视频音轨。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-video --video <视频路径或URL> --prompt <问题或任务> [--fps <0.1-10>] [--max-frames <帧数>] [--model <模型名称>] [--thinking|--no-thinking] [--thinking-budget <Token数>] [--max-tokens <Token数>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--video <视频路径或URL>` | 输入一个视频文件 | 是 | 本地文件、Data URL、HTTP/HTTPS URL |
+| `--prompt <问题或任务>` | 视频分析要求 | 是 | 任意文本 |
+| `--fps <0.1-10>` | 每秒抽取的视频帧数 | 否 | 默认 `2.0` |
+| `--max-frames <帧数>` | 视频最多抽取帧数 | 否 | 正整数 |
+| `--model <模型名称>` | 使用的百炼视觉模型 | 否 | 默认 `qwen3.7-plus` |
+| `--thinking` / `--no-thinking` | 是否返回模型思考过程 | 否 | 默认 `--no-thinking` |
+| `--thinking-budget <Token数>` | 思考过程最大 Token 数 | 否 | 正整数 |
+| `--max-tokens <Token数>` | 最终回复最大 Token 数 | 否 | 默认 `2048` |
+
+**支持的本地视频格式：** AVI、FLV、MKV、MOV、MP4、WMV。本地视频不能超过 100 MB。
+
+**视频摘要示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-video --video "runtime/inputs/video.mp4" --prompt "用三句话概括视频内容。" --fps 1 --max-frames 120
+```
+
+**事件时间戳示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-video --video "runtime/inputs/video.mp4" --prompt "以 JSON 输出人物动作的 start_time、end_time 和 event，时间使用 HH:mm:ss。" --fps 2
+```
+
+**输出示例：**
+
+```json
+{
+  "text": "视频中的人物先面对镜头微笑，随后开心地大笑。",
+  "model": "qwen3.7-plus",
+  "input_type": "video",
+  "inputs": [
+    "https://example.com/video.mp4"
+  ],
+  "fps": 1.0,
+  "max_frames": 20,
+  "finish_reason": "stop"
+}
+```
+
+### `analyze-frames`
+
+**用途：** 把已经按时间顺序抽取的至少四张图片作为视频帧输入，分析事件顺序和动作变化。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-frames --frame <帧图片路径或URL> --frame <帧图片路径或URL> --frame <帧图片路径或URL> --frame <帧图片路径或URL> [--frame <帧图片路径或URL> ...] --prompt <问题或任务> [--fps <0.1-10>] [--model <模型名称>] [--thinking|--no-thinking] [--thinking-budget <Token数>] [--max-tokens <Token数>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--frame <帧图片路径或URL>` | 按时间顺序输入视频帧 | 是 | 至少重复四次 |
+| `--prompt <问题或任务>` | 帧序列分析要求 | 是 | 任意文本 |
+| `--fps <0.1-10>` | 帧序列从原视频抽取时的帧率 | 否 | 默认 `2.0` |
+| `--model <模型名称>` | 使用的百炼视觉模型 | 否 | 默认 `qwen3.7-plus` |
+| `--thinking` / `--no-thinking` | 是否返回模型思考过程 | 否 | 默认 `--no-thinking` |
+| `--thinking-budget <Token数>` | 思考过程最大 Token 数 | 否 | 正整数 |
+| `--max-tokens <Token数>` | 最终回复最大 Token 数 | 否 | 默认 `2048` |
+
+**示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py analyze-frames --frame "runtime/inputs/frame-001.jpg" --frame "runtime/inputs/frame-002.jpg" --frame "runtime/inputs/frame-003.jpg" --frame "runtime/inputs/frame-004.jpg" --prompt "按时间顺序描述画面中发生的事件。" --fps 2
+```
+
+**输出示例：**
+
+```json
+{
+  "text": "守门员准备防守，随后向左侧扑救，但足球最终进入球门。",
+  "model": "qwen3.7-plus",
+  "input_type": "video_frames",
+  "inputs": [
+    "file://C:/path/to/frame-001.jpg",
+    "file://C:/path/to/frame-002.jpg",
+    "file://C:/path/to/frame-003.jpg",
+    "file://C:/path/to/frame-004.jpg"
+  ],
+  "fps": 2.0,
+  "finish_reason": "stop"
+}
+```
+
 ## 密钥管理
 
 ### `status`
@@ -503,6 +697,10 @@ python scripts/commands/env_writer.py remove
 | 热词创建、查询、列表和删除 | 已封装 | 本轮只执行无写操作的列表查询；创建和删除沿用历史实测结果 |
 | 说话人分离 | 已封装 | 真实 CLI 通过并返回 `speaker_id` |
 | 敏感词替换和移除 | 已封装 | `阿里巴巴` 替换为 `****`，`实验室` 成功移除 |
-| 统一入口 | 未创建，当前不强制 | 使用两个独立 Python 入口 |
-| 根 `SKILL.md` | 未创建 | 尚未形成可自动激活和路由的完整 Skill |
+| 单图和多图理解 | 已封装 | 公网图片、本地图片上传和多图比较真实 CLI 通过 |
+| 视频文件理解 | 已封装 | 公网视频真实 CLI 通过，支持 `fps` 和 `max_frames` |
+| 视频帧序列理解 | 已封装 | 四张连续帧真实 CLI 通过 |
+| 视觉思考模式 | 已封装 | `reasoning_content` 和最终回复真实 CLI 通过 |
+| 统一入口 | 未创建，当前不强制 | 使用三个独立 Python 入口 |
+| 根 `SKILL.md` | 已创建 | 可按语音和视觉意图路由到本清单 |
 | Windows exe | 未创建，当前不进入打包阶段 | 工程无打包文件，用户未要求首次打包 |
