@@ -1,8 +1,8 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前统一入口包含 4 个命令组和 21 个子命令。
+本清单基于 2026-07-20 当前源码、真实 `--help` 和实际 API 调用结果编写。目前统一入口包含 5 个命令组和 25 个子命令。
 
-> 首选入口是 `python scripts/main.py <命令组> <子命令>`。`scripts/commands/` 下的四个独立 Python 入口继续保留，用于兼容已有调用和开发调试。工程没有打包产物，用户未明确要求首次打包时不创建 exe。
+> 首选入口是 `python scripts/main.py <命令组> <子命令>`。`scripts/commands/` 下的五个独立 Python 入口继续保留，用于兼容已有调用和开发调试。工程没有打包产物，用户未明确要求首次打包时不创建 exe。
 
 ## 全局默认质量策略
 
@@ -24,6 +24,10 @@
 
 | 命令组 | 子命令 | 用途 |
 |---|---|---|
+| 文件管理 | `upload` | 上传一个或多个本地文件并返回 `file_id` 和签名 URL |
+| 文件管理 | `get` | 查询文件属性和当前签名 URL |
+| 文件管理 | `list` | 分页列举当前账号的有效文件 |
+| 文件管理 | `delete` | 删除一个或多个文件并释放配额 |
 | 语音识别 | `recognize` | 使用 Qwen 最新快照、System Context、语言和 ITN 识别本地短音频 |
 | 语音识别 | `recognize-context` | 使用上下文增强识别本地短音频 |
 | 语音识别 | `transcribe-long` | 异步转写公网长音频并返回时间戳、情感或 SRT |
@@ -50,6 +54,8 @@
 
 ```powershell
 python scripts/main.py --help
+python scripts/main.py file --help
+python scripts/main.py file <upload|get|list|delete> --help
 python scripts/main.py speech --help
 python scripts/main.py speech <子命令> --help
 python scripts/main.py tts --help
@@ -64,6 +70,7 @@ python scripts/main.py key <status|set|remove> --help
 
 | 能力 | 统一入口前缀 | 兼容的独立入口 |
 |---|---|---|
+| 百炼文件管理 | `python scripts/main.py file` | `python scripts/commands/file_management_commands.py` |
 | 语音识别 | `python scripts/main.py speech` | `python scripts/commands/speech_recognition_commands.py` |
 | 声音复刻与语音合成 | `python scripts/main.py tts` | `python scripts/commands/speech_synthesis_commands.py` |
 | 视觉理解与 OCR | `python scripts/main.py visual` | `python scripts/commands/visual_understanding_commands.py` |
@@ -73,8 +80,9 @@ python scripts/main.py key <status|set|remove> --help
 
 | 项目 | 当前行为 | 尚未通过 CLI 暴露的能力 |
 |---|---|---|
+| 百炼文件管理 | 支持多文件上传、详情与 URL 查询、分页列表和批量删除；默认 `file-extract` | 接口仅在北京 Region 开放；签名 URL 会变化，不是永久公网地址 |
 | 本地短音频 | `recognize` 接受本地文件，支持 Qwen System Context、单一语言和 ITN；`recognize-context` 保留 Fun-ASR-Flash 方案 | `recognize` 未主动检查 10 MB、5 分钟上限 |
-| 长音频 | `transcribe-long` 和 `transcribe-advanced` 只接受公网 HTTP/HTTPS URL | 不能直接提交本地长音频，也没有 OSS 上传命令 |
+| 长音频 | `transcribe-long` 和 `transcribe-advanced` 只接受 HTTP/HTTPS URL；本地文件可先通过 `file upload` 取得签名 URL | 识别命令不会自动上传本地文件，需要显式执行两步 |
 | 语言与 ITN | `recognize` 和 `transcribe-long` 支持单一语言与 ITN；高级转写支持重复语言提示 | 混合语种时应保留 `language=auto`，不能同时强制多个 Qwen 语言代码 |
 | 音频通道 | `transcribe-long` 可重复传入 `--channel-id`；高级转写仍固定通道 `0` | 多音轨 Filetrans 按音轨单独计费 |
 | 上下文增强 | `recognize --context` 使用 Qwen System Message；`recognize-context` 使用 Fun-ASR-Flash 单段上下文 | Qwen Filetrans 正式参数未提供 System Context 或热词 |
@@ -82,8 +90,191 @@ python scripts/main.py key <status|set|remove> --help
 | 热词 | 支持创建、查询、列表、删除和在转写时使用热词表 | 同一条创建命令中的全部热词共用一个权重和语言，不能逐词设置 |
 | 流式与生产回调 | 当前使用同步响应或异步轮询 | 未封装流式输出、EventBridge 回调和批量任务调度 |
 | 声音复刻与合成 | 默认使用 `qwen-audio-3.0-tts-plus`，可明确指定 Flash；支持本地样本上传、音色管理、控制指令、情感标签和结果下载 | 只封装已实测的非流式输出；未封装需要 Workspace ID 的 SSE 流式输出、声音设计、实时合成和其他模型系列 |
-| 专用 OCR | 图片支持七种内置任务、旋转矫正、像素阈值和结构化结果；PDF 支持直接解析 | PDF 只接受公网 URL，不支持直接上传本地 PDF；未封装多轮 OCR 对话和 Batch API |
-| Skill 路由 | 根 `SKILL.md` 根据语音或视觉任务选择命令 | 详细参数统一从本清单读取 |
+| 专用 OCR | 图片支持七种内置任务、旋转矫正、像素阈值和结构化结果；本地 PDF 可先通过 `file upload` 取得 URL | `ocr-pdf` 不会自动上传本地 PDF；未封装多轮 OCR 对话和 Batch 任务创建 |
+| Skill 路由 | 根 `SKILL.md` 根据文件、语音或视觉任务选择命令 | 详细参数统一从本清单读取 |
+
+## 百炼文件管理
+
+文件管理使用北京 Region 的 `https://dashscope.aliyuncs.com/api/v1/files`。`upload` 返回 `file_id` 后会自动查询每个文件的当前签名 URL；URL 包含临时访问凭证，不要公开或长期保存。跨任务复用时保存 `file_id`，执行任务前使用 `get` 获取当前 URL。
+
+服务限制：有效文件总空间不超过 100 GB，总数量不超过 10000 个；`file-extract` 单文件最大 150 MB，`batch` 最大 500 MB，`fine-tune` 最大 300 MB。接口返回的 `failed_uploads` 是单个文件失败结果，多文件请求中的其他文件仍可能成功。
+
+### `upload`
+
+**用途：** 一次上传一个或多个本地文件，并为每个成功文件返回 `file_id`、属性和当前签名 URL。音频、视频、图片、PDF 和其他内容分析素材默认使用 `file-extract`。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py file upload <本地文件>... [--purpose <file-extract|batch|fine-tune>] [--description <文件描述>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<本地文件>...` | 一个或多个本地文件路径 | 是 | 文件必须存在；可连续传入多个路径 |
+| `--purpose <file-extract\|batch\|fine-tune>` | 文件用途 | 否 | 默认：`file-extract`<br>可选：`file-extract`、`batch`、`fine-tune` |
+| `--description <文件描述>` | 为本次上传的全部文件设置相同描述 | 否 | 默认不设置 |
+
+**示例：**
+
+```powershell
+python scripts/main.py file upload "runtime/inputs/audio.mp3" "runtime/inputs/image.jpg" --description "内容生产素材"
+```
+
+**输出示例：**
+
+```json
+{
+  "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "purpose": "file-extract",
+  "uploaded_files": [
+    {
+      "name": "audio.mp3",
+      "file_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "region": "cn-beijing",
+      "url": "http://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com/...?Expires=..."
+    },
+    {
+      "name": "image.jpg",
+      "file_id": "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy",
+      "region": "cn-beijing",
+      "url": "http://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com/...?Expires=..."
+    }
+  ],
+  "failed_uploads": [],
+  "url_resolution_failures": []
+}
+```
+
+> 本轮真实 CLI 使用一个请求成功上传 426995 字节 MP3 和 496395 字节 JPEG，两个文件均返回 `file_id` 和签名 URL。MP3 URL 随后通过 Filetrans 完成 18 秒语音识别，JPEG URL 随后通过 `qwen3.7-plus` 完成视觉理解；另行上传的 13 MB MP4 URL 也通过 `qwen3.7-plus` 完成视频理解。
+
+---
+
+### `get`
+
+**用途：** 根据长期保存的 `file_id` 查询文件属性并取得当前签名 URL。任务执行前重新查询，避免使用已经失效或过期的旧 URL。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py file get <文件ID>
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<文件ID>` | `upload` 或 `list` 返回的 `file_id` | 是 | — |
+
+**示例：**
+
+```powershell
+python scripts/main.py file get "<上传返回的file_id>"
+```
+
+**输出示例：**
+
+```json
+{
+  "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "data": {
+    "name": "audio.mp3",
+    "size": 426995,
+    "region": "cn-beijing",
+    "file_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "url": "http://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com/...?Expires=..."
+  }
+}
+```
+
+---
+
+### `list`
+
+**用途：** 分页列出当前账号仍未删除的文件及其属性和当前签名 URL。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py file list [--page-no <页码>] [--page-size <每页数量>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--page-no <页码>` | 当前页，从 1 开始 | 否 | 默认 `1`，最小值 `1` |
+| `--page-size <每页数量>` | 每页返回数量 | 否 | 默认 `10`，范围 `1` 至 `100` |
+
+**示例：**
+
+```powershell
+python scripts/main.py file list --page-no 1 --page-size 20
+```
+
+**输出示例：**
+
+```json
+{
+  "data": {
+    "total": 1,
+    "files": [
+      {
+        "name": "audio.mp3",
+        "file_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        "url": "http://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com/...?Expires=..."
+      }
+    ],
+    "page_size": 20,
+    "page_no": 1
+  },
+  "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
+```
+
+---
+
+### `delete`
+
+**用途：** 删除一个或多个百炼文件，释放空间和文件数量配额。CLI 会逐个调用删除接口并分别返回成功和失败结果。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py file delete <文件ID>...
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<文件ID>...` | 一个或多个待删除的 `file_id` | 是 | 可连续传入多个 ID |
+
+**示例：**
+
+```powershell
+python scripts/main.py file delete "<文件ID1>" "<文件ID2>"
+```
+
+**输出示例：**
+
+```json
+{
+  "deleted_files": [
+    {
+      "file_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    }
+  ],
+  "failed_deletions": []
+}
+```
+
+> 本轮真实 CLI 批量删除两个测试文件成功，`failed_deletions=[]`；删除后列表总数从 5 恢复为 3，再次查询已删除 ID 返回 `File not found.`。
+
+---
 
 ## 语音识别
 
@@ -1096,6 +1287,8 @@ python scripts/commands/env_writer.py remove
 
 | 项目 | 当前状态 | 2026-07-20 本轮检查 |
 |---|---|---|
+| 百炼多文件上传与 URL | 已封装 | 真实上传 MP3、JPEG 和 13 MB MP4，均返回 `file_id` 和签名 URL；URL 已分别用于 Filetrans、图片理解和视频理解任务 |
+| 文件详情、列表和删除 | 已封装 | 详情与分页列表真实通过；两个测试文件批量删除成功，删除后再次查询返回 `File not found.` |
 | 短音频文本、情感和语言 | 已封装 | 最新快照真实 CLI 通过，支持 `--language` 和 ITN，返回 `emotion=neutral`、`language=zh` |
 | Qwen System Context | 已封装单轮背景和实体词 | 真实 CLI 正确识别“年下、时下、贯穿一生”；Fun-ASR-Flash 上下文命令继续保留 |
 | 长音频异步转写 | 已封装公网 URL | 真实 CLI 通过，支持语言、ITN 和重复音轨参数；历史已使用超过 5 分钟人声音频验证 |
@@ -1114,6 +1307,6 @@ python scripts/commands/env_writer.py remove
 | 视觉最高质量默认 | 已封装 | 未传质量参数时真实返回 `qwen3.7-plus`、`thinking=true`、`high_resolution=true` |
 | Qwen-OCR 七种图片任务 | 已封装 | 默认 `qwen3.5-ocr` 与 `rotate=true` 真实 CLI 通过；信息抽取返回 `ocr_result.kv_result` |
 | Qwen-OCR PDF 解析 | 已封装公网 URL | 真实 CLI 通过并返回文本与 `ocr_result.layouts` |
-| 统一入口 | 已创建 | `scripts/main.py` 注册 `speech`、`tts`、`visual`、`key` 四个命令组，独立入口继续兼容 |
-| 根 `SKILL.md` | 已创建 | 可按语音和视觉意图路由到本清单 |
+| 统一入口 | 已创建 | `scripts/main.py` 注册 `file`、`speech`、`tts`、`visual`、`key` 五个命令组，独立入口继续兼容 |
+| 根 `SKILL.md` | 已创建 | 可按文件、语音和视觉意图路由到本清单 |
 | Windows exe | 未创建，当前不进入打包阶段 | 工程无打包文件，用户未要求首次打包 |

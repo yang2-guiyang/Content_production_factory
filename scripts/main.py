@@ -7,6 +7,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 import click
 
 from commands.env_writer import cli as key_cli
+from commands.file_management_commands import cli as file_cli
 from commands.speech_recognition_commands import cli as speech_cli
 from commands.speech_synthesis_commands import cli as tts_cli
 from commands.visual_understanding_commands import cli as visual_cli
@@ -17,7 +18,7 @@ from commands.visual_understanding_commands import cli as visual_cli
 # ---------------------------
 @click.group()
 def cli():
-    """统一调用语音识别、语音生成、视觉理解和密钥管理命令。"""
+    """统一调用文件、语音、视觉和密钥管理命令。"""
     pass
 
 
@@ -30,10 +31,13 @@ cli.add_command(tts_cli, name="tts")
 # 步骤3：注册视觉理解和 OCR 命令组。
 cli.add_command(visual_cli, name="visual")
 
-# 步骤4：注册 API 密钥管理命令组。
+# 步骤4：注册百炼文件管理命令组。
+cli.add_command(file_cli, name="file")
+
+# 步骤5：注册 API 密钥管理命令组。
 cli.add_command(key_cli, name="key")
 
 
 if __name__ == "__main__":
-    # 步骤5：启动统一 CLI 入口。
+    # 步骤6：启动统一 CLI 入口。
     cli()

@@ -1,13 +1,14 @@
 # Content Production Factory
 
-Content Production Factory 是基于阿里云百炼的内容生产 Skill 和独立 CLI 工具集，覆盖语音识别、声音复刻、语音合成、视觉理解和 Qwen-OCR。
+Content Production Factory 是基于阿里云百炼的内容生产 Skill 和独立 CLI 工具集，覆盖文件上传与 URL 管理、语音识别、声音复刻、语音合成、视觉理解和 Qwen-OCR。
 
-项目目前通过 `scripts/main.py` 统一提供 4 个命令组、21 个子命令，同时保留原有独立入口。所有命令默认使用当前已验证的最高质量模型和参数；只有明确指定时才切换到 Flash、关闭思考或降低图像分辨率。
+项目目前通过 `scripts/main.py` 统一提供 5 个命令组、25 个子命令，同时保留原有独立入口。所有模型命令默认使用当前已验证的最高质量参数；只有明确指定时才切换到 Flash、关闭思考或降低图像分辨率。
 
 ## 能力概览
 
 | 能力 | 主要功能 | 默认模型 |
 |---|---|---|
+| 文件管理 | 多文件上传、签名 URL 获取、文件详情、分页列表和批量删除 | 百炼 Files API，默认 `file-extract` |
 | 语音识别 | Qwen 上下文和语言增强、12 小时长音频、SRT、情感、时间戳、热词、说话人分离、敏感词过滤 | 按场景使用 `qwen3-asr-flash-2026-02-10`、`qwen3-asr-flash-filetrans`、`fun-asr` |
 | 声音复刻 | 使用本地 WAV、MP3、M4A 或公网 URL 创建、查询、列出和删除自定义音色 | `qwen-audio-3.0-tts-plus` |
 | 语音合成 | 使用系统音色或复刻音色生成 WAV、MP3、PCM，支持声音指令、情感和拟声标签 | `qwen-audio-3.0-tts-plus` |
@@ -35,6 +36,7 @@ python scripts/main.py key status
 
 ```powershell
 python scripts/main.py --help
+python scripts/main.py file --help
 python scripts/main.py speech --help
 python scripts/main.py tts --help
 python scripts/main.py visual --help
@@ -56,6 +58,17 @@ python scripts/main.py key --help
 语音识别中的 Flash 名称是官方专用模型名称，目前没有可直接替换的 Plus 档。时间戳粒度、热词、说话人分离、敏感词和 OCR 任务类型属于功能选择，不会因为最高质量策略而自动改写。
 
 ## 命令总览
+
+### 文件管理
+
+统一入口：`python scripts/main.py file`
+
+| 命令 | 用途 |
+|---|---|
+| `upload` | 上传一个或多个本地文件，返回 `file_id` 和当前签名 URL |
+| `get` | 查询文件属性并刷新签名 URL |
+| `list` | 分页列举有效文件 |
+| `delete` | 删除一个或多个文件并释放配额 |
 
 ### 语音识别
 
@@ -107,6 +120,14 @@ python scripts/main.py key --help
 | `remove` | 删除 API Key |
 
 ## 常用示例
+
+### 多文件上传并取得 URL
+
+```powershell
+python scripts/main.py file upload "runtime/inputs/audio.mp3" "runtime/inputs/image.jpg" --description "内容生产素材"
+```
+
+默认使用 `file-extract`。命令会为每个成功上传的文件返回 `file_id` 和签名 URL；长期复用时保存 `file_id`，任务开始前使用 `file get <文件ID>` 获取当前 URL。
 
 ### 使用背景实体增强本地音频识别
 
@@ -166,9 +187,10 @@ runtime/
 
 ## 当前限制
 
-- 长音频识别和云端 SRT 只接受服务端可访问的 HTTP/HTTPS URL，当前不负责上传本地文件到 OSS。
+- 长音频识别和云端 SRT 仍只接受 HTTP/HTTPS URL；本地文件先通过 `file upload` 上传，再把返回 URL 传给识别命令。
 - 工程不再提供本地 Whisper/VAD；本地短音频由 Qwen 在线识别，字幕由 Filetrans 的云端时间戳生成。
-- `ocr-pdf` 只接受公网 PDF URL。
+- `ocr-pdf` 只接受 URL；本地 PDF 可先使用 `file upload` 取得签名 URL。
+- 百炼文件管理目前仅在北京 Region 开放；签名 URL 不是永久地址，应保存 `file_id` 并在使用前重新查询。
 - Qwen-Audio-TTS 当前封装已实测的非流式输出；SSE 流式输出需要 Workspace ID，尚未封装。
 - `scripts/main.py` 是统一入口；`scripts/commands/` 下的独立入口继续保留，用于兼容和开发调试。
 - 首次打包只有在用户明确要求时执行。
@@ -187,6 +209,7 @@ Content_production_factory/
     └── commands/
         ├── env_reader.py
         ├── env_writer.py
+        ├── file_management_commands.py
         ├── speech_recognition_commands.py
         ├── speech_synthesis_commands.py
         └── visual_understanding_commands.py
