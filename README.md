@@ -222,7 +222,8 @@ Content_production_factory/
 ├── SKILL.md
 ├── SKILL开发说明.md
 ├── references/
-│   └── CLI.md
+│   ├── CLI.md
+│   └── 视频提取口播与字幕.md
 └── scripts/
     ├── main.py
     └── commands/
@@ -238,6 +239,7 @@ Content_production_factory/
 ## 文档
 
 - [完整 CLI 命令、参数和验证结果](./references/CLI.md)
+- [视频提取口播、字幕与对话 SOP](./references/视频提取口播与字幕.md)
 - [Codex Skill 路由](./SKILL.md)
 - [Skill 开发说明](./SKILL开发说明.md)
 
