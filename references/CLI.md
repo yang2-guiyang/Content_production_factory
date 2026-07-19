@@ -1,6 +1,6 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前包含 3 个独立命令组和 14 个子命令。
+本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前包含 3 个独立命令组和 16 个子命令。
 
 > 当前通过三个独立 Python 入口调用 CLI。工程没有 `scripts/main.py`，按现行开发流程不需要为了统一入口而主动创建；工程也没有打包产物，用户未明确要求首次打包时不创建 exe。
 
@@ -17,6 +17,8 @@
 | 语音识别 | `hotword-list` | 列出热词表 |
 | 语音识别 | `hotword-delete` | 删除热词表 |
 | 视觉理解 | `analyze-images` | 分析单图或多图，完成问答、OCR、定位和文档解析等任务 |
+| 视觉理解 | `ocr` | 使用 Qwen-OCR 提取图片文字、位置、表格、公式或结构化字段 |
+| 视觉理解 | `ocr-pdf` | 使用 Qwen-OCR 直接解析公网 PDF 文档 |
 | 视觉理解 | `analyze-video` | 分析本地或公网视频文件 |
 | 视觉理解 | `analyze-frames` | 把至少四张连续图片作为视频帧分析 |
 | 密钥管理 | `status` | 检查 API Key 是否已配置 |
@@ -47,6 +49,7 @@ python scripts/commands/env_writer.py <status|set|remove> --help
 | 上下文增强 | 支持一段不超过 400 字符的用户上下文 | 不支持多轮 `user` / `assistant` 上下文消息 |
 | 热词 | 支持创建、查询、列表、删除和在转写时使用热词表 | 同一条创建命令中的全部热词共用一个权重和语言，不能逐词设置 |
 | 流式与生产回调 | 当前使用同步响应或异步轮询 | 未封装流式输出、EventBridge 回调和批量任务调度 |
+| 专用 OCR | 图片支持七种内置任务、旋转矫正、像素阈值和结构化结果；PDF 支持直接解析 | PDF 只接受公网 URL，不支持直接上传本地 PDF；未封装多轮 OCR 对话和 Batch API |
 | Skill 路由 | 根 `SKILL.md` 根据语音或视觉任务选择命令 | 详细参数统一从本清单读取 |
 
 ## 语音识别
@@ -413,7 +416,7 @@ python scripts/commands/speech_recognition_commands.py transcribe-advanced "http
 
 ## 视觉理解
 
-视觉理解统一使用 DashScope 多模态接口，默认模型为 `qwen3.7-plus`。任务类型由提示词决定，同一个图片命令可完成描述、问答、OCR、信息抽取、物体定位、文档解析、题目解答和创意写作。
+通用视觉理解使用默认模型 `qwen3.7-plus`；专用文字提取使用默认模型 `qwen3.5-ocr`。普通描述、问答、定位和视频任务使用 `analyze-*` 命令，需要文字位置、结构化字段、表格、公式、多语言文字或 PDF 布局时优先使用 `ocr` 或 `ocr-pdf`。
 
 ### `analyze-images`
 
@@ -500,6 +503,137 @@ python scripts/commands/visual_understanding_commands.py analyze-images --image 
   "prompt": "请只用一句中文描述图片。"
 }
 ```
+
+### `ocr`
+
+**用途：** 使用 Qwen-OCR 识别一张或多张本地图片、Data URL 或公网图片 URL，并保留专用的 `ocr_result` 结构化结果。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py ocr --image <图片路径或URL> [--image <图片路径或URL> ...] [--task <任务>] [--prompt <补充要求>] [--schema <JSON对象>|--schema-file <JSON文件>] [--rotate|--no-rotate] [--min-pixels <像素数>] [--max-pixels <像素数>] [--model <模型名称>] [--max-tokens <Token数>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--image <图片路径或URL>` | 输入图片，可重复传入多张 | 是 | 本地文件、Data URL、HTTP/HTTPS URL |
+| `--task <任务>` | 使用 Qwen-OCR 内置任务 | 否 | 默认 `text_recognition`；见下表 |
+| `--prompt <补充要求>` | 在内置任务之外增加用户要求 | 否 | 任意文本 |
+| `--schema <JSON对象>` | 直接传入信息抽取字段模板 | 否 | 仅限 `key_information_extraction` |
+| `--schema-file <JSON文件>` | 从 UTF-8 JSON 文件读取字段模板 | 否 | 仅限 `key_information_extraction`；不能与 `--schema` 同时使用 |
+| `--rotate` / `--no-rotate` | 是否自动矫正倾斜或旋转图像 | 否 | 默认 `--no-rotate` |
+| `--min-pixels <像素数>` | 小图放大后的最小像素阈值 | 否 | 正整数 |
+| `--max-pixels <像素数>` | 大图缩小后的最大像素阈值 | 否 | 正整数 |
+| `--model <模型名称>` | 使用的 Qwen-OCR 模型 | 否 | 默认 `qwen3.5-ocr` |
+| `--max-tokens <Token数>` | 回复最大 Token 数 | 否 | 默认 `8192` |
+
+**内置任务：**
+
+| 任务值 | 能力 | 主要输出 |
+|---|---|---|
+| `advanced_recognition` | 高精文字识别和文字行定位 | `ocr_result.words_info`，含文本、四点坐标和旋转矩形 |
+| `key_information_extraction` | 票据、证照、表单结构化信息抽取 | `ocr_result.kv_result`；Schema 最多三层嵌套 |
+| `table_parsing` | 表格解析 | HTML 表格文本 |
+| `document_parsing` | 扫描文档版面解析 | LaTeX 文本或结构化布局 |
+| `formula_recognition` | 数学公式识别 | LaTeX 公式 |
+| `text_recognition` | 中英文通用文字识别 | 纯文本 |
+| `multi_lan` | 小语种文字识别 | 纯文本；支持阿、法、德、意、日、韩、葡、俄、西、越等语言 |
+
+**结构化票据抽取示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py ocr --image "runtime/inputs/ticket.jpg" --task key_information_extraction --schema-file "runtime/inputs/ticket-schema.json" --rotate
+```
+
+`ticket-schema.json` 示例：
+
+```json
+{
+  "乘车日期": "年-月-日",
+  "车次": "车次编号",
+  "票价": "含货币符号的金额"
+}
+```
+
+**其他任务示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py ocr --image "runtime/inputs/page.png" --task advanced_recognition --rotate
+python scripts/commands/visual_understanding_commands.py ocr --image "runtime/inputs/table.png" --task table_parsing
+python scripts/commands/visual_understanding_commands.py ocr --image "runtime/inputs/formula.png" --task formula_recognition
+python scripts/commands/visual_understanding_commands.py ocr --image "runtime/inputs/multilingual.png" --task multi_lan
+```
+
+**真实输出结构：**
+
+```json
+{
+  "text": "```json\n{\"车次\": \"G1948\", \"票价\": \"337.50\"}\n```",
+  "ocr_result": {
+    "kv_result": {
+      "车次": "G1948",
+      "票价": "337.50"
+    }
+  },
+  "model": "qwen3.5-ocr",
+  "task": "key_information_extraction",
+  "finish_reason": "stop",
+  "rotate": true
+}
+```
+
+**图像限制：** 本地或公网单图使用 `qwen3.5-ocr` 时不能超过 20 MB；Data URL 编码后不能超过 10 MB。宽和高均须大于 10 像素，宽高比不能超过 200:1，建议总像素不超过 1568 万。4K 以下支持 BMP、HEIC、JPEG、PNG、TIFF、WEBP；4K 到 8K 仅支持 JPEG、JPG、PNG。
+
+### `ocr-pdf`
+
+**用途：** 通过 Responses API 把公网 PDF 直接交给 `qwen3.5-ocr` 做文档解析，无需手工拆页，并返回文本和 `ocr_result.layouts`。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py ocr-pdf --pdf-url <公网PDF URL> [--model <模型名称>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--pdf-url <公网PDF URL>` | 可由百炼服务访问的 PDF URL | 是 | `http://` 或 `https://`；最大 50 页且不超过 100 MB |
+| `--model <模型名称>` | 支持 Responses API 的 Qwen-OCR 模型 | 否 | 默认 `qwen3.5-ocr` |
+
+**示例：**
+
+```powershell
+python scripts/commands/visual_understanding_commands.py ocr-pdf --pdf-url "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
+```
+
+**真实输出结构：**
+
+```json
+{
+  "text": "# Dummy PDF file",
+  "ocr_result": {
+    "layouts": [
+      {
+        "pageNum": 0,
+        "type": "title",
+        "text": "Dummy PDF file",
+        "pos": [
+          {"x": 128, "y": 159},
+          {"x": 413, "y": 159}
+        ]
+      }
+    ]
+  },
+  "model": "qwen3.5-ocr",
+  "task": "document_parsing",
+  "status": "completed"
+}
+```
+
+> 当前 `ocr-pdf` 只接受公网 URL，不负责把本地 PDF 上传到 OSS。PDF 直接解析仅适用于 `qwen3.5-ocr` 及之后支持 Responses API 的模型。
 
 ### `analyze-video`
 
@@ -701,6 +835,8 @@ python scripts/commands/env_writer.py remove
 | 视频文件理解 | 已封装 | 公网视频真实 CLI 通过，支持 `fps` 和 `max_frames` |
 | 视频帧序列理解 | 已封装 | 四张连续帧真实 CLI 通过 |
 | 视觉思考模式 | 已封装 | `reasoning_content` 和最终回复真实 CLI 通过 |
+| Qwen-OCR 七种图片任务 | 已封装 | `key_information_extraction` 真实 CLI 通过并返回 `ocr_result.kv_result`；其余任务完成参数和响应行为检查 |
+| Qwen-OCR PDF 解析 | 已封装公网 URL | 真实 CLI 通过并返回文本与 `ocr_result.layouts` |
 | 统一入口 | 未创建，当前不强制 | 使用三个独立 Python 入口 |
 | 根 `SKILL.md` | 已创建 | 可按语音和视觉意图路由到本清单 |
 | Windows exe | 未创建，当前不进入打包阶段 | 工程无打包文件，用户未要求首次打包 |
