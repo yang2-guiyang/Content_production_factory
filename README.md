@@ -2,7 +2,7 @@
 
 Content Production Factory 是基于阿里云百炼的内容生产 Skill 和独立 CLI 工具集，覆盖语音识别、声音复刻、语音合成、视觉理解和 Qwen-OCR。
 
-项目目前提供 4 个独立命令组、21 个子命令。所有命令默认使用当前已验证的最高质量模型和参数；只有明确指定时才切换到 Flash、关闭思考或降低图像分辨率。
+项目目前通过 `scripts/main.py` 统一提供 4 个命令组、21 个子命令，同时保留原有独立入口。所有命令默认使用当前已验证的最高质量模型和参数；只有明确指定时才切换到 Flash、关闭思考或降低图像分辨率。
 
 ## 能力概览
 
@@ -25,8 +25,8 @@ python -m pip install -U click dashscope requests
 ### 2. 配置 API Key
 
 ```powershell
-python scripts/commands/env_writer.py set "sk-你的百炼API密钥"
-python scripts/commands/env_writer.py status
+python scripts/main.py key set "sk-你的百炼API密钥"
+python scripts/main.py key status
 ```
 
 密钥保存在 `scripts/.env`，该文件已被 Git 忽略。CLI 不会在状态命令中显示密钥内容。
@@ -34,10 +34,11 @@ python scripts/commands/env_writer.py status
 ### 3. 查看命令
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py --help
-python scripts/commands/speech_synthesis_commands.py --help
-python scripts/commands/visual_understanding_commands.py --help
-python scripts/commands/env_writer.py --help
+python scripts/main.py --help
+python scripts/main.py speech --help
+python scripts/main.py tts --help
+python scripts/main.py visual --help
+python scripts/main.py key --help
 ```
 
 完整参数、限制和真实输出见 [CLI 命令清单](./references/CLI.md)。
@@ -57,7 +58,7 @@ python scripts/commands/env_writer.py --help
 
 ### 语音识别
 
-入口：`scripts/commands/speech_recognition_commands.py`
+统一入口：`python scripts/main.py speech`
 
 | 命令 | 用途 |
 |---|---|
@@ -72,7 +73,7 @@ python scripts/commands/env_writer.py --help
 
 ### 声音复刻与合成
 
-入口：`scripts/commands/speech_synthesis_commands.py`
+统一入口：`python scripts/main.py tts`
 
 | 命令 | 用途 |
 |---|---|
@@ -84,7 +85,7 @@ python scripts/commands/env_writer.py --help
 
 ### 视觉理解与 OCR
 
-入口：`scripts/commands/visual_understanding_commands.py`
+统一入口：`python scripts/main.py visual`
 
 | 命令 | 用途 |
 |---|---|
@@ -96,7 +97,7 @@ python scripts/commands/env_writer.py --help
 
 ### 密钥管理
 
-入口：`scripts/commands/env_writer.py`
+统一入口：`python scripts/main.py key`
 
 | 命令 | 用途 |
 |---|---|
@@ -109,19 +110,19 @@ python scripts/commands/env_writer.py --help
 ### 识别本地音频
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py recognize "runtime/inputs/audio.mp3"
+python scripts/main.py speech recognize "runtime/inputs/audio.mp3"
 ```
 
 ### 获取长音频字级时间戳
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py transcribe-long "https://example.com/audio.mp3" --timestamp-level word
+python scripts/main.py speech transcribe-long "https://example.com/audio.mp3" --timestamp-level word
 ```
 
 ### 创建最高质量复刻音色
 
 ```powershell
-python scripts/commands/speech_synthesis_commands.py voice-clone-create "runtime/inputs/voice.mp3" --prefix myvoice --language-hint zh
+python scripts/main.py tts voice-clone-create "runtime/inputs/voice.mp3" --prefix myvoice --language-hint zh
 ```
 
 命令默认绑定 `qwen-audio-3.0-tts-plus`，返回的 `voice_id` 用于后续合成。
@@ -129,13 +130,13 @@ python scripts/commands/speech_synthesis_commands.py voice-clone-create "runtime
 ### 使用复刻音色生成 MP3
 
 ```powershell
-python scripts/commands/speech_synthesis_commands.py synthesize --text "每一个好内容，都值得被认真听见。" --voice "qwen-audio-3.0-tts-plus-myvoice-音色ID" --output "runtime/outputs/narration.mp3" --format mp3
+python scripts/main.py tts synthesize --text "每一个好内容，都值得被认真听见。" --voice "qwen-audio-3.0-tts-plus-myvoice-音色ID" --output "runtime/outputs/narration.mp3" --format mp3
 ```
 
 ### 使用最高质量视觉理解
 
 ```powershell
-python scripts/commands/visual_understanding_commands.py analyze-images --image "runtime/inputs/image.jpg" --prompt "准确描述图片中的人物、物体和场景。"
+python scripts/main.py visual analyze-images --image "runtime/inputs/image.jpg" --prompt "准确描述图片中的人物、物体和场景。"
 ```
 
 默认开启思考和高分辨率。需要降低成本时显式使用 `--no-thinking --standard-resolution`。
@@ -143,13 +144,13 @@ python scripts/commands/visual_understanding_commands.py analyze-images --image 
 ### 票据结构化信息抽取
 
 ```powershell
-python scripts/commands/visual_understanding_commands.py ocr --image "runtime/inputs/ticket.jpg" --task key_information_extraction --schema-file "runtime/inputs/ticket-schema.json"
+python scripts/main.py visual ocr --image "runtime/inputs/ticket.jpg" --task key_information_extraction --schema-file "runtime/inputs/ticket-schema.json"
 ```
 
 ### PDF 文档解析
 
 ```powershell
-python scripts/commands/visual_understanding_commands.py ocr-pdf --pdf-url "https://example.com/document.pdf"
+python scripts/main.py visual ocr-pdf --pdf-url "https://example.com/document.pdf"
 ```
 
 ## 运行目录
@@ -167,7 +168,7 @@ runtime/
 - 长音频识别只接受服务端可访问的 HTTP/HTTPS URL。
 - `ocr-pdf` 只接受公网 PDF URL。
 - Qwen-Audio-TTS 当前封装已实测的非流式输出；SSE 流式输出需要 Workspace ID，尚未封装。
-- 当前没有统一 `scripts/main.py` 和 exe，直接调用 `scripts/commands/` 下的独立入口。
+- `scripts/main.py` 是统一入口；`scripts/commands/` 下的独立入口继续保留，用于兼容和开发调试。
 - 首次打包只有在用户明确要求时执行。
 
 ## 项目结构
@@ -180,6 +181,7 @@ Content_production_factory/
 ├── references/
 │   └── CLI.md
 └── scripts/
+    ├── main.py
     └── commands/
         ├── env_reader.py
         ├── env_writer.py

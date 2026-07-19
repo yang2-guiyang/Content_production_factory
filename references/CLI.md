@@ -1,8 +1,8 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前包含 4 个独立命令组和 21 个子命令。
+本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前统一入口包含 4 个命令组和 21 个子命令。
 
-> 当前通过四个独立 Python 入口调用 CLI。工程没有 `scripts/main.py`，按现行开发流程不需要为了统一入口而主动创建；工程也没有打包产物，用户未明确要求首次打包时不创建 exe。
+> 首选入口是 `python scripts/main.py <命令组> <子命令>`。`scripts/commands/` 下的四个独立 Python 入口继续保留，用于兼容已有调用和开发调试。工程没有打包产物，用户未明确要求首次打包时不创建 exe。
 
 ## 全局默认质量策略
 
@@ -49,17 +49,25 @@
 ## 查看帮助
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py --help
-python scripts/commands/speech_recognition_commands.py <子命令> --help
-python scripts/commands/speech_synthesis_commands.py --help
-python scripts/commands/speech_synthesis_commands.py <子命令> --help
-python scripts/commands/visual_understanding_commands.py --help
-python scripts/commands/visual_understanding_commands.py <子命令> --help
-python scripts/commands/env_writer.py --help
-python scripts/commands/env_writer.py <status|set|remove> --help
+python scripts/main.py --help
+python scripts/main.py speech --help
+python scripts/main.py speech <子命令> --help
+python scripts/main.py tts --help
+python scripts/main.py tts <子命令> --help
+python scripts/main.py visual --help
+python scripts/main.py visual <子命令> --help
+python scripts/main.py key --help
+python scripts/main.py key <status|set|remove> --help
 ```
 
-> 当前源码的部分命令简介仍包含尚不存在的 `python scripts/main.py ...` 示例。统一入口创建前，请以本清单中的独立脚本命令为准。
+统一入口映射如下。后续各命令章节仍保留独立入口语法，参数完全相同；把对应前缀替换为统一入口前缀即可。
+
+| 能力 | 统一入口前缀 | 兼容的独立入口 |
+|---|---|---|
+| 语音识别 | `python scripts/main.py speech` | `python scripts/commands/speech_recognition_commands.py` |
+| 声音复刻与语音合成 | `python scripts/main.py tts` | `python scripts/commands/speech_synthesis_commands.py` |
+| 视觉理解与 OCR | `python scripts/main.py visual` | `python scripts/commands/visual_understanding_commands.py` |
+| 密钥管理 | `python scripts/main.py key` | `python scripts/commands/env_writer.py` |
 
 ## 当前适用范围与已知限制
 
@@ -1077,6 +1085,6 @@ python scripts/commands/env_writer.py remove
 | 视觉最高质量默认 | 已封装 | 未传质量参数时真实返回 `qwen3.7-plus`、`thinking=true`、`high_resolution=true` |
 | Qwen-OCR 七种图片任务 | 已封装 | 默认 `qwen3.5-ocr` 与 `rotate=true` 真实 CLI 通过；信息抽取返回 `ocr_result.kv_result` |
 | Qwen-OCR PDF 解析 | 已封装公网 URL | 真实 CLI 通过并返回文本与 `ocr_result.layouts` |
-| 统一入口 | 未创建，当前不强制 | 使用四个独立 Python 入口 |
+| 统一入口 | 已创建 | `scripts/main.py` 注册 `speech`、`tts`、`visual`、`key` 四个命令组，独立入口继续兼容 |
 | 根 `SKILL.md` | 已创建 | 可按语音和视觉意图路由到本清单 |
 | Windows exe | 未创建，当前不进入打包阶段 | 工程无打包文件，用户未要求首次打包 |

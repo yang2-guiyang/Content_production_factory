@@ -4,7 +4,11 @@ import pathlib
 import re
 import sys
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+# 步骤0：仅在需要时切换为 UTF-8，避免统一入口重复导入时关闭输出流。
+standard_output_encoding = getattr(sys.stdout, "encoding", "") or ""
+normalized_output_encoding = standard_output_encoding.lower().replace("-", "")
+if normalized_output_encoding != "utf8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 import click
 import requests
