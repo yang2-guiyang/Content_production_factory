@@ -2,7 +2,7 @@
 
 Content Production Factory 是一套面向 AI 和开发者的 Skill 文件包开发规范，统一约定 Skill 的架构、CLI 设计、编码风格、鉴权、打包、测试和文档格式。
 
-本仓库提供 Skill 开发规范，并包含可直接运行的语音识别、视觉理解和 Qwen-OCR 独立 CLI。完整开发规则见 [SKILL 开发说明](./SKILL开发说明.md)，命令用法见 [CLI 命令清单](./references/CLI.md)。
+本仓库提供 Skill 开发规范，并包含可直接运行的语音识别、Qwen-Audio-TTS 声音复刻与非实时合成、视觉理解和 Qwen-OCR 独立 CLI。完整开发规则见 [SKILL 开发说明](./SKILL开发说明.md)，命令用法见 [CLI 命令清单](./references/CLI.md)。
 
 ## 核心架构
 
@@ -36,6 +36,7 @@ list-groups -> list-commands <group> -> <group> <command> --help -> execute
 ## 当前 CLI
 
 - `scripts/commands/speech_recognition_commands.py`：短音频、长音频、热词、上下文增强、说话人分离、敏感词、情感和时间戳
+- `scripts/commands/speech_synthesis_commands.py`：Qwen-Audio-TTS 声音复刻、音色管理和非实时语音合成
 - `scripts/commands/visual_understanding_commands.py`：单图、多图、视频文件、视频帧理解，以及 Qwen-OCR 图片和 PDF 解析
 - `scripts/commands/env_writer.py`：DashScope API Key 状态、设置和删除
 

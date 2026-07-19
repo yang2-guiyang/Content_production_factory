@@ -1,8 +1,8 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前包含 3 个独立命令组和 16 个子命令。
+本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前包含 4 个独立命令组和 21 个子命令。
 
-> 当前通过三个独立 Python 入口调用 CLI。工程没有 `scripts/main.py`，按现行开发流程不需要为了统一入口而主动创建；工程也没有打包产物，用户未明确要求首次打包时不创建 exe。
+> 当前通过四个独立 Python 入口调用 CLI。工程没有 `scripts/main.py`，按现行开发流程不需要为了统一入口而主动创建；工程也没有打包产物，用户未明确要求首次打包时不创建 exe。
 
 ## 当前命令概览
 
@@ -16,6 +16,11 @@
 | 语音识别 | `hotword-status` | 查询热词表状态 |
 | 语音识别 | `hotword-list` | 列出热词表 |
 | 语音识别 | `hotword-delete` | 删除热词表 |
+| 语音生成 | `voice-clone-create` | 使用本地声音样本或公网 URL 创建 Qwen-Audio-TTS 复刻音色 |
+| 语音生成 | `voice-clone-list` | 列出当前账号的复刻音色 |
+| 语音生成 | `voice-clone-status` | 查询一个复刻音色的详情和状态 |
+| 语音生成 | `voice-clone-delete` | 删除不再使用的复刻音色 |
+| 语音生成 | `synthesize` | 使用系统音色或复刻音色执行非实时语音合成并下载文件 |
 | 视觉理解 | `analyze-images` | 分析单图或多图，完成问答、OCR、定位和文档解析等任务 |
 | 视觉理解 | `ocr` | 使用 Qwen-OCR 提取图片文字、位置、表格、公式或结构化字段 |
 | 视觉理解 | `ocr-pdf` | 使用 Qwen-OCR 直接解析公网 PDF 文档 |
@@ -30,6 +35,8 @@
 ```powershell
 python scripts/commands/speech_recognition_commands.py --help
 python scripts/commands/speech_recognition_commands.py <子命令> --help
+python scripts/commands/speech_synthesis_commands.py --help
+python scripts/commands/speech_synthesis_commands.py <子命令> --help
 python scripts/commands/visual_understanding_commands.py --help
 python scripts/commands/visual_understanding_commands.py <子命令> --help
 python scripts/commands/env_writer.py --help
@@ -49,6 +56,7 @@ python scripts/commands/env_writer.py <status|set|remove> --help
 | 上下文增强 | 支持一段不超过 400 字符的用户上下文 | 不支持多轮 `user` / `assistant` 上下文消息 |
 | 热词 | 支持创建、查询、列表、删除和在转写时使用热词表 | 同一条创建命令中的全部热词共用一个权重和语言，不能逐词设置 |
 | 流式与生产回调 | 当前使用同步响应或异步轮询 | 未封装流式输出、EventBridge 回调和批量任务调度 |
+| 声音复刻与合成 | 固定使用 `qwen-audio-3.0-tts-flash`；支持本地样本上传、音色管理、控制指令、情感标签和结果下载 | 只封装已实测的非流式输出；未封装需要 Workspace ID 的 SSE 流式输出、声音设计、实时合成和其他模型系列 |
 | 专用 OCR | 图片支持七种内置任务、旋转矫正、像素阈值和结构化结果；PDF 支持直接解析 | PDF 只接受公网 URL，不支持直接上传本地 PDF；未封装多轮 OCR 对话和 Batch API |
 | Skill 路由 | 根 `SKILL.md` 根据语音或视觉任务选择命令 | 详细参数统一从本清单读取 |
 
@@ -410,6 +418,216 @@ python scripts/commands/speech_recognition_commands.py transcribe-advanced "http
         ]
       }
     ]
+  }
+}
+```
+
+## 语音生成
+
+语音生成命令固定使用 `qwen-audio-3.0-tts-flash`。复刻音色创建时即绑定该模型，后续合成时不能改用其他模型。声音样本和合成结果均通过现有 `DASHSCOPE_API_KEY` 调用北京地域接口。
+
+### `voice-clone-create`
+
+**用途：** 使用本地 WAV、MP3、M4A 文件或公网音频 URL 创建 Qwen-Audio-TTS 复刻音色。本地文件会先上传至 DashScope 文件服务，创建完成后自动删除临时上传文件。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py voice-clone-create <声音样本路径或URL> --prefix <音色前缀> [--language-hint <语言代码> ...] [--max-prompt-audio-length <秒>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<声音样本路径或URL>` | 复刻声音使用的本地文件或公网 URL | 是 | WAV、MP3、M4A；本地文件不超过 10 MB |
+| `--prefix <音色前缀>` | 生成音色 ID 使用的名称前缀 | 是 | 1～10 位小写字母或数字 |
+| `--language-hint <语言代码>` | 提示声音样本语言，可重复传入 | 否 | 如 `zh`、`en`；默认由服务判断 |
+| `--max-prompt-audio-length <秒>` | 预处理后最多保留的样本时长 | 否 | 1～60 秒；接口默认 10 秒 |
+
+**声音样本要求：** 推荐 10～20 秒，最长 60 秒；采样率不低于 16 kHz；至少包含 5 秒连续清晰人声；不能包含背景音乐、明显环境噪音或其他说话人。双声道只处理首声道。
+
+**本地样本示例：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py voice-clone-create "runtime/inputs/FBAFB6CA-3EE7-42cd-B256-AF255C40D577.mp3" --prefix codex719 --language-hint zh --max-prompt-audio-length 20
+```
+
+**输出示例：**
+
+```json
+{
+  "voice_id": "qwen-audio-3.0-tts-flash-codex719-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "target_model": "qwen-audio-3.0-tts-flash",
+  "prefix": "codex719",
+  "source_type": "local_file",
+  "language_hints": ["zh"],
+  "max_prompt_audio_length": 20.0,
+  "temporary_upload_deleted": true,
+  "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
+```
+
+> Qwen-Audio-TTS 创建音色免费。每个账号与 Qwen-Audio-Realtime、CosyVoice 共用最多 1000 个自定义音色配额。音色一年未用于合成时可能被自动删除。
+
+### `voice-clone-list`
+
+**用途：** 分页列出当前账号中的 Qwen-Audio-TTS 复刻音色，可按创建前缀过滤。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py voice-clone-list [--prefix <音色前缀>] [--page-index <索引>] [--page-size <数量>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--prefix <音色前缀>` | 只列出指定前缀的音色 | 否 | 默认不过滤 |
+| `--page-index <索引>` | 分页索引 | 否 | 默认 `0`，最小 `0` |
+| `--page-size <数量>` | 每页返回数量 | 否 | 默认 `10`，范围 `1`～`100` |
+
+**示例：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py voice-clone-list --prefix codex719 --page-size 10
+```
+
+**输出示例：**
+
+```json
+{
+  "count": 1,
+  "voices": [
+    {
+      "status": "OK",
+      "target_model": "qwen-audio-3.0-tts-flash",
+      "voice_id": "qwen-audio-3.0-tts-flash-codex719-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+  ],
+  "prefix": "codex719",
+  "page_index": 0,
+  "page_size": 10
+}
+```
+
+### `voice-clone-status`
+
+**用途：** 查询一个复刻音色的创建时间、状态和绑定模型。CLI 会移除接口返回的原始样本签名链接，避免声音样本链接进入终端日志。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py voice-clone-status <音色ID>
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<音色ID>` | `voice-clone-create` 返回的完整音色 ID | 是 | 无 |
+
+**示例：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py voice-clone-status "qwen-audio-3.0-tts-flash-codex719-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+**输出示例：**
+
+```json
+{
+  "voice_id": "qwen-audio-3.0-tts-flash-codex719-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "details": {
+    "status": "OK",
+    "target_model": "qwen-audio-3.0-tts-flash",
+    "resource_link_available": true
+  },
+  "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
+```
+
+### `voice-clone-delete`
+
+**用途：** 永久删除一个不再使用的复刻音色并释放配额。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py voice-clone-delete <音色ID>
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<音色ID>` | 要删除的完整音色 ID | 是 | 无 |
+
+**示例：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py voice-clone-delete "qwen-audio-3.0-tts-flash-codex719-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+**输出示例：**
+
+```json
+{
+  "voice_id": "qwen-audio-3.0-tts-flash-codex719-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "deleted": true,
+  "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
+```
+
+### `synthesize`
+
+**用途：** 使用 Qwen-Audio-TTS 系统音色或复刻音色执行非实时语音合成。接口音频 URL 只有 24 小时有效，CLI 会立即把音频下载到本地输出文件。
+
+**完整语法：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py synthesize --text <待合成文本> --voice <音色ID> [--output <输出文件>] [--format <wav|mp3|pcm>] [--sample-rate <采样率Hz>] [--instruction <声音控制指令>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--text <待合成文本>` | 需要转换为语音的完整文本 | 是 | 支持 Qwen-Audio-TTS 情感与拟声标签 |
+| `--voice <音色ID>` | 系统音色或复刻音色 ID | 是 | 复刻音色必须绑定 `qwen-audio-3.0-tts-flash` |
+| `--output <输出文件>` | 下载音频的本地文件 | 否 | 默认 `runtime/outputs/synthesized.wav` |
+| `--format <格式>` | 输出音频格式 | 否 | 默认 `wav`；可选 `wav`、`mp3`、`pcm` |
+| `--sample-rate <采样率Hz>` | 输出采样率 | 否 | 默认 `24000`；范围 `8000`～`48000` |
+| `--instruction <声音控制指令>` | 控制音调、语速、情感、方言或音色特点 | 否 | 任意自然语言指令 |
+
+**复刻音色合成示例：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py synthesize --text "这是使用复刻音色生成的测试语音。" --voice "qwen-audio-3.0-tts-flash-codex719-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" --output "runtime/outputs/voice-clone-test.wav" --format wav --sample-rate 24000 --instruction "请用自然、清晰、温和的普通话表达。"
+```
+
+**情感与拟声标签示例：**
+
+```powershell
+python scripts/commands/speech_synthesis_commands.py synthesize --text "[excited]今天的天气真不错！[laughing]我们一起出去玩吧！" --voice "longanhuan_v3.6" --output "runtime/outputs/excited.wav"
+```
+
+**输出示例：**
+
+```json
+{
+  "model": "qwen-audio-3.0-tts-flash",
+  "voice": "qwen-audio-3.0-tts-flash-codex719-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "text": "这是使用复刻音色生成的测试语音。",
+  "format": "wav",
+  "sample_rate": 24000,
+  "instruction": "请用自然、清晰、温和的普通话表达。",
+  "output_file": "C:\\path\\to\\runtime\\outputs\\voice-clone-test.wav",
+  "output_bytes": 176684,
+  "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "usage": {
+    "characters": 31
   }
 }
 ```
@@ -831,12 +1049,16 @@ python scripts/commands/env_writer.py remove
 | 热词创建、查询、列表和删除 | 已封装 | 本轮只执行无写操作的列表查询；创建和删除沿用历史实测结果 |
 | 说话人分离 | 已封装 | 真实 CLI 通过并返回 `speaker_id` |
 | 敏感词替换和移除 | 已封装 | `阿里巴巴` 替换为 `****`，`实验室` 成功移除 |
+| Qwen-Audio-TTS 声音复刻 | 已封装本地文件和公网 URL | 指定 MP3 真实 CLI 创建成功，临时上传文件自动删除 |
+| 复刻音色列表和详情 | 已封装 | 真实 CLI 返回 `status=OK` 和固定绑定模型；原始样本签名链接已隐藏 |
+| 非实时语音合成 | 已封装系统和复刻音色 | 复刻音色生成 176,684 字节 WAV，反向识别文本与输入完全一致 |
+| 复刻音色删除 | 已封装 | 为保留本轮生成音色未执行真实删除；命令注册和参数行为检查通过 |
 | 单图和多图理解 | 已封装 | 公网图片、本地图片上传和多图比较真实 CLI 通过 |
 | 视频文件理解 | 已封装 | 公网视频真实 CLI 通过，支持 `fps` 和 `max_frames` |
 | 视频帧序列理解 | 已封装 | 四张连续帧真实 CLI 通过 |
 | 视觉思考模式 | 已封装 | `reasoning_content` 和最终回复真实 CLI 通过 |
 | Qwen-OCR 七种图片任务 | 已封装 | `key_information_extraction` 真实 CLI 通过并返回 `ocr_result.kv_result`；其余任务完成参数和响应行为检查 |
 | Qwen-OCR PDF 解析 | 已封装公网 URL | 真实 CLI 通过并返回文本与 `ocr_result.layouts` |
-| 统一入口 | 未创建，当前不强制 | 使用三个独立 Python 入口 |
+| 统一入口 | 未创建，当前不强制 | 使用四个独立 Python 入口 |
 | 根 `SKILL.md` | 已创建 | 可按语音和视觉意图路由到本清单 |
 | Windows exe | 未创建，当前不进入打包阶段 | 工程无打包文件，用户未要求首次打包 |
