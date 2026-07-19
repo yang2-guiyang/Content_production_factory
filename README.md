@@ -24,6 +24,7 @@ list-groups -> list-commands <group> -> <group> <command> --help -> execute
 ## 关键规范
 
 - 功能正确和性能优先，代码使用直白、易读的实现
+- CLI 默认使用当前已验证的最高质量模型与参数；仅在用户明确要求成本、速度或其他模型时降档
 - Python 脚本必须在第三方库导入前将 stdout 强制设为 UTF-8
 - 独立 CLI 使用 Click 组织命令组；已有主入口时必须同步注册，并提供 `list-groups` 和 `list-commands`
 - 外部 API 密钥按需保存在 `scripts/.env`，不得提交到 Git

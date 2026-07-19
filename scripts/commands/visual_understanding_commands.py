@@ -494,7 +494,7 @@ def cli():
 @click.option(
     "--thinking/--no-thinking",
     "enable_thinking",
-    default=False,
+    default=True,
     show_default=True,
     help="是否开启模型思考模式",
 )
@@ -508,7 +508,7 @@ def cli():
 @click.option(
     "--high-resolution/--standard-resolution",
     "high_resolution",
-    default=False,
+    default=True,
     show_default=True,
     help="是否启用高分辨率图像模式",
 )
@@ -529,7 +529,7 @@ def cli():
 @click.option(
     "--max-tokens",
     type=click.IntRange(min=1),
-    default=2048,
+    default=8192,
     show_default=True,
     metavar="<Token数>",
     help="模型回复最大 Token 数",
@@ -624,7 +624,7 @@ def analyze_images_command(
 @click.option(
     "--rotate/--no-rotate",
     "enable_rotate",
-    default=False,
+    default=True,
     show_default=True,
     help="是否自动矫正倾斜或旋转图像",
 )
@@ -790,7 +790,7 @@ def ocr_pdf_command(pdf_url, model_name):
 @click.option(
     "--thinking/--no-thinking",
     "enable_thinking",
-    default=False,
+    default=True,
     show_default=True,
     help="是否开启模型思考模式",
 )
@@ -804,7 +804,7 @@ def ocr_pdf_command(pdf_url, model_name):
 @click.option(
     "--max-tokens",
     type=click.IntRange(min=1),
-    default=2048,
+    default=8192,
     show_default=True,
     metavar="<Token数>",
     help="模型回复最大 Token 数",
@@ -887,7 +887,7 @@ def analyze_video_command(
 @click.option(
     "--thinking/--no-thinking",
     "enable_thinking",
-    default=False,
+    default=True,
     show_default=True,
     help="是否开启模型思考模式",
 )
@@ -901,7 +901,7 @@ def analyze_video_command(
 @click.option(
     "--max-tokens",
     type=click.IntRange(min=1),
-    default=2048,
+    default=8192,
     show_default=True,
     metavar="<Token数>",
     help="模型回复最大 Token 数",

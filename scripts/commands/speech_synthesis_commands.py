@@ -20,7 +20,11 @@ sys.path.insert(0, str(SCRIPTS_DIRECTORY))
 from commands.env_reader import get_env_value
 
 
-DEFAULT_TTS_MODEL_NAME = "qwen-audio-3.0-tts-flash"
+DEFAULT_TTS_MODEL_NAME = "qwen-audio-3.0-tts-plus"
+TTS_MODEL_NAMES = (
+    "qwen-audio-3.0-tts-plus",
+    "qwen-audio-3.0-tts-flash",
+)
 VOICE_ENROLLMENT_MODEL_NAME = "voice-enrollment"
 SPEECH_SYNTHESIS_API_URL = (
     "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
@@ -311,14 +315,14 @@ def download_audio_file(audio_url, output_file_path):
 # ---------------------------
 # 函数说明：调用 Qwen-Audio-TTS 非实时 HTTP 接口。
 # ---------------------------
-def call_speech_synthesis(api_key, synthesis_input):
+def call_speech_synthesis(api_key, synthesis_input, model_name):
     # 步骤1：构造固定模型的 HTTP 请求。
     headers = {
         "Authorization": "Bearer " + api_key,
         "Content-Type": "application/json",
     }
     request_data = {
-        "model": DEFAULT_TTS_MODEL_NAME,
+        "model": model_name,
         "input": synthesis_input,
     }
 
@@ -373,6 +377,14 @@ def cli():
     help="1 到 10 位小写字母或数字",
 )
 @click.option(
+    "--model",
+    "model_name",
+    type=click.Choice(TTS_MODEL_NAMES, case_sensitive=True),
+    default=DEFAULT_TTS_MODEL_NAME,
+    show_default=True,
+    help="绑定的 Qwen-Audio-TTS 模型，默认最高质量 Plus",
+)
+@click.option(
     "--language-hint",
     "language_hints",
     multiple=True,
@@ -382,17 +394,19 @@ def cli():
 @click.option(
     "--max-prompt-audio-length",
     type=click.FloatRange(min=1.0, max=60.0),
-    default=None,
+    default=20.0,
+    show_default=True,
     metavar="<秒>",
     help="预处理后最多保留的声音样本时长",
 )
 def voice_clone_create_command(
     audio_source,
     prefix,
+    model_name,
     language_hints,
     max_prompt_audio_length,
 ):
-    """创建固定绑定 Qwen-Audio-TTS 的复刻音色。"""
+    """创建绑定所选 Qwen-Audio-TTS 模型的复刻音色。"""
     # 步骤1：检查前缀并读取密钥。
     try:
         validate_voice_prefix(prefix)
@@ -414,7 +428,7 @@ def voice_clone_create_command(
     temporary_upload_deleted = True
     try:
         voice_id = service.create_voice(
-            target_model=DEFAULT_TTS_MODEL_NAME,
+            target_model=model_name,
             prefix=prefix,
             url=prepared_audio_url,
             language_hints=language_hint_list,
@@ -433,7 +447,7 @@ def voice_clone_create_command(
     # 步骤4：输出可供合成命令直接使用的音色 ID。
     result = {
         "voice_id": voice_id,
-        "target_model": DEFAULT_TTS_MODEL_NAME,
+        "target_model": model_name,
         "prefix": prefix,
         "source_type": source_type,
         "language_hints": language_hint_list,
@@ -572,6 +586,14 @@ def voice_clone_delete_command(voice_id):
     help="系统音色或 voice-clone-create 返回的复刻音色",
 )
 @click.option(
+    "--model",
+    "model_name",
+    type=click.Choice(TTS_MODEL_NAMES, case_sensitive=True),
+    default=DEFAULT_TTS_MODEL_NAME,
+    show_default=True,
+    help="使用的 Qwen-Audio-TTS 模型，默认最高质量 Plus",
+)
+@click.option(
     "--output",
     "output_file_path",
     default=str(DEFAULT_OUTPUT_FILE),
@@ -605,6 +627,7 @@ def voice_clone_delete_command(voice_id):
 def synthesize_command(
     text,
     voice,
+    model_name,
     output_file_path,
     audio_format,
     sample_rate,
@@ -630,7 +653,11 @@ def synthesize_command(
         sample_rate,
         instruction,
     )
-    response_data = call_speech_synthesis(api_key, synthesis_input)
+    response_data = call_speech_synthesis(
+        api_key,
+        synthesis_input,
+        model_name,
+    )
     audio_result = extract_synthesis_result(response_data)
 
     # 步骤3：下载音频到本地输出目录。
@@ -642,7 +669,7 @@ def synthesize_command(
 
     # 步骤4：输出合成结果和文件信息。
     result = {
-        "model": DEFAULT_TTS_MODEL_NAME,
+        "model": model_name,
         "voice": voice,
         "text": text,
         "format": audio_format,
