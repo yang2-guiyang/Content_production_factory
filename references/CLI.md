@@ -1,6 +1,6 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前统一入口包含 4 个命令组和 21 个子命令。
+本清单基于 2026-07-19 当前源码、真实 `--help` 和实际调用结果编写。目前统一入口包含 4 个命令组和 22 个子命令。
 
 > 首选入口是 `python scripts/main.py <命令组> <子命令>`。`scripts/commands/` 下的四个独立 Python 入口继续保留，用于兼容已有调用和开发调试。工程没有打包产物，用户未明确要求首次打包时不创建 exe。
 
@@ -10,6 +10,7 @@
 
 | 能力 | 默认最高质量配置 | 明确降档方式 |
 |---|---|---|
+| 本地音视频转 SRT | `faster-whisper` 的 `large-v3`、Beam Size 5、VAD | 明确传入较小的 `--model`，或使用 `--compute-type int8` |
 | 短音频识别 | `qwen3-asr-flash` | 官方当前只提供该专用模型，不存在可替换的 Plus 档 |
 | 上下文增强识别 | `fun-asr-flash-2026-06-15` | 官方当前只为该模型提供上下文增强 |
 | 长音频识别 | `qwen3-asr-flash-filetrans` 或功能完整的 `fun-asr` | 按是否需要热词、说话人分离和敏感词选择，不按价格自动切换 |
@@ -26,6 +27,7 @@
 |---|---|---|
 | 语音识别 | `recognize` | 识别本地短音频并返回情感标注 |
 | 语音识别 | `recognize-context` | 使用上下文增强识别本地短音频 |
+| 语音识别 | `transcribe-local` | 使用本地 Whisper 模型识别音频或视频并生成 SRT |
 | 语音识别 | `transcribe-long` | 异步转写公网长音频并返回时间戳和情感 |
 | 语音识别 | `transcribe-advanced` | 使用热词、说话人分离和敏感词过滤转写公网音频 |
 | 语音识别 | `hotword-create` | 创建 Fun-ASR 热词表 |
@@ -73,6 +75,7 @@ python scripts/main.py key <status|set|remove> --help
 
 | 项目 | 当前行为 | 尚未通过 CLI 暴露的能力 |
 |---|---|---|
+| 本地字幕 | `transcribe-local` 直接读取本地音频或视频并写出 UTF-8 SRT，不需要 API Key | 不支持说话人分离、双语翻译字幕和逐词卡拉 OK 字幕 |
 | 本地短音频 | `recognize` 和 `recognize-context` 接受本地文件 | `recognize` 未主动检查 10 MB、5 分钟上限 |
 | 长音频 | `transcribe-long` 和 `transcribe-advanced` 只接受公网 HTTP/HTTPS URL | 不能直接提交本地长音频，也没有 OSS 上传命令 |
 | 语言与 ITN | 短音频自动识别语言；高级转写支持重复传入 `--language-hint` | `recognize` 和 `transcribe-long` 不能指定语言，`enable_itn` 固定为 `false` |
@@ -172,6 +175,76 @@ python scripts/commands/speech_recognition_commands.py recognize-context "runtim
   }
 }
 ```
+
+### `transcribe-local`
+
+**用途：** 使用 `faster-whisper` 在本机直接识别音频或视频，并把真实分段时间戳写入 UTF-8 SRT 字幕文件。该命令不调用百炼，不需要 `DASHSCOPE_API_KEY`。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py speech transcribe-local <本地音频或视频> [--output <SRT文件>] [--language <语言代码|auto>] [--model <模型名称或路径>] [--device <auto|cpu|cuda>] [--compute-type <计算精度>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<本地音频或视频>` | 需要转写的本地媒体文件 | 是 | 支持 `.aac`、`.avi`、`.flac`、`.m4a`、`.mkv`、`.mov`、`.mp3`、`.mp4`、`.ogg`、`.wav`、`.webm`、`.wmv` |
+| `--output <SRT文件>` | SRT 字幕输出路径 | 否 | 默认 `runtime/outputs/<输入文件名>.srt`，必须使用 `.srt` 扩展名 |
+| `--language <语言代码\|auto>` | 指定识别语言 | 否 | 默认 `auto`；可传 `zh`、`en` 等 Whisper 语言代码 |
+| `--model <模型名称或路径>` | faster-whisper 模型名称或本地模型目录 | 否 | 默认最高质量 `large-v3` |
+| `--device <auto\|cpu\|cuda>` | 本地推理设备 | 否 | 默认 `auto`；可选 `auto`、`cpu`、`cuda` |
+| `--compute-type <计算精度>` | CTranslate2 计算精度 | 否 | 默认 `auto`；常用 `float16`、`int8` |
+
+**最高质量示例：**
+
+```powershell
+python scripts/main.py speech transcribe-local "runtime/inputs/audio.mp3" --output "runtime/outputs/audio.srt" --language zh
+```
+
+**低资源设备示例：**
+
+```powershell
+python scripts/main.py speech transcribe-local "runtime/inputs/audio.mp3" --output "runtime/outputs/audio.srt" --language zh --model large-v3-turbo --device cpu --compute-type int8
+```
+
+**真实输出示例：**
+
+```json
+{
+  "model": "large-v3-turbo",
+  "requested_device": "cpu",
+  "requested_compute_type": "int8",
+  "device": "cpu",
+  "compute_type": "int8",
+  "device_fallback_reason": null,
+  "media_file": "C:\\path\\to\\audio.mp3",
+  "output_file": "C:\\path\\to\\audio.srt",
+  "encoding": "utf-8-sig",
+  "language": "zh",
+  "language_probability": 1.0,
+  "duration_seconds": 17.789375,
+  "subtitle_count": 7,
+  "text": "识别得到的完整文案"
+}
+```
+
+**SRT 输出结构：**
+
+```srt
+1
+00:00:00,000 --> 00:00:02,980
+第一句字幕
+
+2
+00:00:02,980 --> 00:00:06,220
+第二句字幕
+```
+
+**运行说明：** 使用前安装 `faster-whisper`：`python -m pip install -U faster-whisper`。首次使用某个模型时需要联网下载，之后从本地缓存加载；无法访问默认模型仓库时，也可用 `--model` 指向已经下载的本地模型目录。默认 `large-v3` 质量最高，但对内存和显存要求较高。Windows 的 `device=auto` 会在加载模型前检查 CUDA 12 和 cuDNN 9 运行库；缺失时直接使用 CPU `int8`，并通过 `device_fallback_reason` 说明原因。命令固定使用 Beam Size 5 和 VAD。Whisper 可能产生繁体字、同音词或专有名词误识别，重要字幕仍需人工校对。
+
+---
 
 ### `transcribe-long`
 
@@ -1068,6 +1141,7 @@ python scripts/commands/env_writer.py remove
 
 | 项目 | 当前状态 | 2026-07-19 本轮检查 |
 |---|---|---|
+| 本地音视频转 SRT | 已封装 | 17.789 秒 MP3 使用 `small` 和 `large-v3-turbo` 分别生成 8 条和 7 条字幕；43.119 秒 MP4 使用 `small` 直接生成 20 条字幕；默认 `large-v3` 因本机可用内存不足未完成推理 |
 | 短音频文本、情感和语言 | 已封装 | 真实 CLI 通过，返回 `emotion=neutral`、`language=zh` |
 | 上下文增强 | 已封装单轮文本上下文 | 真实 CLI 通过 |
 | 长音频异步转写 | 已封装公网 URL | 真实 CLI 通过；历史已使用超过 5 分钟人声音频验证 |

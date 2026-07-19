@@ -1,6 +1,8 @@
 import base64
+import ctypes
 import io
 import json
+import os
 import pathlib
 import sys
 import time
@@ -18,6 +20,7 @@ from dashscope.audio.asr import VocabularyService
 
 # 步骤1：把 scripts 目录加入模块搜索路径。
 SCRIPTS_DIRECTORY = pathlib.Path(__file__).resolve().parent.parent
+PROJECT_DIRECTORY = SCRIPTS_DIRECTORY.parent
 sys.path.insert(0, str(SCRIPTS_DIRECTORY))
 
 from commands.env_reader import get_env_value
@@ -30,6 +33,7 @@ MODEL_NAME = "qwen3-asr-flash"
 CONTEXT_MODEL_NAME = "fun-asr-flash-2026-06-15"
 LONG_AUDIO_MODEL_NAME = "qwen3-asr-flash-filetrans"
 FUN_ASR_MODEL_NAME = "fun-asr"
+DEFAULT_LOCAL_WHISPER_MODEL_NAME = "large-v3"
 AUDIO_MIME_TYPES = {
     ".aac": "audio/aac",
     ".flac": "audio/flac",
@@ -37,6 +41,20 @@ AUDIO_MIME_TYPES = {
     ".mp3": "audio/mpeg",
     ".ogg": "audio/ogg",
     ".wav": "audio/wav",
+}
+LOCAL_MEDIA_EXTENSIONS = {
+    ".aac",
+    ".avi",
+    ".flac",
+    ".m4a",
+    ".mkv",
+    ".mov",
+    ".mp3",
+    ".mp4",
+    ".ogg",
+    ".wav",
+    ".webm",
+    ".wmv",
 }
 
 
@@ -326,11 +344,146 @@ def wait_for_vocabulary_ready(service, vocabulary_id):
 
 
 # ---------------------------
+# 函数说明：检查本地转写输入并返回绝对路径。
+# ---------------------------
+def validate_local_media_file(media_file_path):
+    # 步骤1：检查输入路径是否为本地文件。
+    resolved_media_file = media_file_path.resolve()
+    if not resolved_media_file.exists():
+        raise click.ClickException("本地媒体文件不存在：" + str(resolved_media_file))
+    if not resolved_media_file.is_file():
+        raise click.ClickException("本地媒体路径不是文件：" + str(resolved_media_file))
+
+    # 步骤2：检查文件扩展名是否受本地解码器支持。
+    media_file_extension = resolved_media_file.suffix.lower()
+    if media_file_extension not in LOCAL_MEDIA_EXTENSIONS:
+        supported_extensions = ", ".join(sorted(LOCAL_MEDIA_EXTENSIONS))
+        raise click.ClickException(
+            "不支持的本地媒体格式，当前支持：" + supported_extensions
+        )
+
+    # 步骤3：返回通过检查的绝对路径。
+    return resolved_media_file
+
+
+# ---------------------------
+# 函数说明：把秒数转换为 SRT 使用的时间格式。
+# ---------------------------
+def format_srt_timestamp(seconds_value):
+    # 步骤1：把秒数转换为非负整数毫秒。
+    total_milliseconds = round(seconds_value * 1000)
+    if total_milliseconds < 0:
+        total_milliseconds = 0
+
+    # 步骤2：依次计算小时、分钟、秒和毫秒。
+    hours = total_milliseconds // 3600000
+    remaining_milliseconds = total_milliseconds % 3600000
+    minutes = remaining_milliseconds // 60000
+    remaining_milliseconds = remaining_milliseconds % 60000
+    seconds = remaining_milliseconds // 1000
+    milliseconds = remaining_milliseconds % 1000
+
+    # 步骤3：生成标准 SRT 时间文本。
+    return (
+        f"{hours:02d}:{minutes:02d}:{seconds:02d},"
+        f"{milliseconds:03d}"
+    )
+
+
+# ---------------------------
+# 函数说明：确定本地字幕输出文件。
+# ---------------------------
+def resolve_srt_output_file(media_file_path, output_file_path):
+    # 步骤1：用户传入输出路径时使用该路径。
+    if output_file_path:
+        resolved_output_file = output_file_path.resolve()
+    else:
+        output_file_name = media_file_path.stem + ".srt"
+        resolved_output_file = (
+            PROJECT_DIRECTORY / "runtime" / "outputs" / output_file_name
+        )
+
+    # 步骤2：限制输出格式为 SRT。
+    if resolved_output_file.suffix.lower() != ".srt":
+        raise click.ClickException("字幕输出文件必须使用 .srt 扩展名")
+
+    # 步骤3：创建输出目录并返回绝对路径。
+    resolved_output_file.parent.mkdir(parents=True, exist_ok=True)
+    return resolved_output_file
+
+
+# ---------------------------
+# 函数说明：加载本地 Whisper 模型并完整执行一次转写。
+# ---------------------------
+def run_local_whisper_transcription(
+    whisper_model_class,
+    model_name,
+    device,
+    compute_type,
+    media_file_path,
+    language,
+):
+    # 步骤1：按指定设备和计算精度加载模型。
+    whisper_model = whisper_model_class(
+        model_name,
+        device=device,
+        compute_type=compute_type,
+    )
+
+    # 步骤2：启动带 VAD 的高质量本地转写。
+    segments, transcription_information = whisper_model.transcribe(
+        str(media_file_path),
+        language=language,
+        beam_size=5,
+        vad_filter=True,
+    )
+
+    # 步骤3：立即完成生成器迭代，让推理错误在写文件前返回。
+    segment_items = []
+    for segment in segments:
+        segment_items.append(segment)
+
+    return segment_items, transcription_information
+
+
+# ---------------------------
+# 函数说明：在 Windows 上为自动设备选择检查本地 CUDA 运行库。
+# ---------------------------
+def resolve_local_whisper_runtime(device, compute_type):
+    # 步骤1：用户明确指定设备时不改写配置。
+    if device != "auto":
+        return device, compute_type, None
+
+    # 步骤2：非 Windows 平台交给 CTranslate2 自动选择。
+    if os.name != "nt":
+        return device, compute_type, None
+
+    # 步骤3：检查当前版本在 Windows GPU 推理时需要的 DLL。
+    required_cuda_libraries = ["cublas64_12.dll", "cudnn64_9.dll"]
+    missing_cuda_libraries = []
+    for library_name in required_cuda_libraries:
+        try:
+            ctypes.WinDLL(library_name)
+        except OSError:
+            missing_cuda_libraries.append(library_name)
+
+    # 步骤4：运行库完整时继续使用自动设备。
+    if not missing_cuda_libraries:
+        return device, compute_type, None
+
+    # 步骤5：运行库不完整时直接选择低内存 CPU 计算，避免重复加载模型。
+    fallback_reason = (
+        "自动设备缺少 CUDA 运行库：" + ", ".join(missing_cuda_libraries)
+    )
+    return "cpu", "int8", fallback_reason
+
+
+# ---------------------------
 # 函数说明：创建语音识别命令组。
 # ---------------------------
 @click.group()
 def cli():
-    """执行短音频、长音频和增强语音识别。"""
+    """执行本地字幕、短音频、长音频和增强语音识别。"""
     pass
 
 
@@ -541,6 +694,147 @@ def recognize_context_command(audio_file, context_text, sample_rate):
         "audio_file": str(resolved_audio_file),
         "request_id": response_data.get("request_id"),
         "usage": response_data.get("usage"),
+    }
+    click.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+# ---------------------------
+# 函数说明：使用本地 Whisper 模型转写媒体文件并生成 SRT 字幕。
+# ---------------------------
+@cli.command(name="transcribe-local")
+@click.argument(
+    "media_file",
+    type=click.Path(path_type=pathlib.Path),
+    metavar="<本地音频或视频>",
+)
+@click.option(
+    "--output",
+    "output_file",
+    type=click.Path(path_type=pathlib.Path),
+    metavar="<SRT文件>",
+    help="字幕输出路径，默认写入 runtime/outputs/<输入文件名>.srt",
+)
+@click.option(
+    "--language",
+    default="auto",
+    show_default=True,
+    metavar="<语言代码|auto>",
+    help="指定识别语言，如 zh、en；auto 表示自动检测",
+)
+@click.option(
+    "--model",
+    "model_name",
+    default=DEFAULT_LOCAL_WHISPER_MODEL_NAME,
+    show_default=True,
+    metavar="<模型名称或路径>",
+    help="faster-whisper 模型名称或本地模型目录",
+)
+@click.option(
+    "--device",
+    default="auto",
+    show_default=True,
+    type=click.Choice(["auto", "cpu", "cuda"], case_sensitive=True),
+    metavar="<auto|cpu|cuda>",
+    help="本地推理设备",
+)
+@click.option(
+    "--compute-type",
+    default="auto",
+    show_default=True,
+    metavar="<计算精度>",
+    help="CTranslate2 计算精度，如 auto、float16、int8",
+)
+def transcribe_local_command(
+    media_file,
+    output_file,
+    language,
+    model_name,
+    device,
+    compute_type,
+):
+    """本地识别音频或视频并生成 SRT 字幕。"""
+    # 步骤1：检查输入文件并确定字幕输出路径。
+    resolved_media_file = validate_local_media_file(media_file)
+    resolved_output_file = resolve_srt_output_file(
+        resolved_media_file,
+        output_file,
+    )
+
+    # 步骤2：延迟加载本地模型依赖，避免影响其他语音识别命令。
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        raise click.ClickException(
+            "缺少 faster-whisper，请先运行："
+            "python -m pip install -U faster-whisper"
+        )
+
+    # 步骤3：准备语言配置。
+    transcription_language = language
+    if language == "auto":
+        transcription_language = None
+
+    # 步骤4：在加载模型前确定实际设备和计算精度。
+    actual_device, actual_compute_type, device_fallback_reason = (
+        resolve_local_whisper_runtime(device, compute_type)
+    )
+
+    # 步骤5：执行一次完整本地转写。
+    try:
+        segment_items, transcription_information = run_local_whisper_transcription(
+            WhisperModel,
+            model_name,
+            actual_device,
+            actual_compute_type,
+            resolved_media_file,
+            transcription_language,
+        )
+    except Exception as error:
+        raise click.ClickException("本地媒体转写失败：" + str(error))
+
+    # 步骤6：逐段写入临时 SRT 文件并汇总完整文本。
+    temporary_output_file = resolved_output_file.with_suffix(".srt.tmp")
+    subtitle_count = 0
+    full_text_parts = []
+    try:
+        with open(temporary_output_file, "w", encoding="utf-8-sig") as srt_file:
+            for segment in segment_items:
+                subtitle_text = " ".join(segment.text.strip().split())
+                if not subtitle_text:
+                    continue
+
+                subtitle_count = subtitle_count + 1
+                start_timestamp = format_srt_timestamp(segment.start)
+                end_timestamp = format_srt_timestamp(segment.end)
+
+                srt_file.write(str(subtitle_count) + "\n")
+                srt_file.write(start_timestamp + " --> " + end_timestamp + "\n")
+                srt_file.write(subtitle_text + "\n\n")
+                full_text_parts.append(subtitle_text)
+    except Exception as error:
+        if temporary_output_file.exists():
+            temporary_output_file.unlink()
+        raise click.ClickException("生成 SRT 字幕失败：" + str(error))
+
+    # 步骤7：识别完成后用完整字幕替换目标文件。
+    temporary_output_file.replace(resolved_output_file)
+
+    # 步骤8：输出便于后续处理的 JSON 摘要。
+    result = {
+        "model": model_name,
+        "requested_device": device,
+        "requested_compute_type": compute_type,
+        "device": actual_device,
+        "compute_type": actual_compute_type,
+        "device_fallback_reason": device_fallback_reason,
+        "media_file": str(resolved_media_file),
+        "output_file": str(resolved_output_file),
+        "encoding": "utf-8-sig",
+        "language": transcription_information.language,
+        "language_probability": transcription_information.language_probability,
+        "duration_seconds": transcription_information.duration,
+        "subtitle_count": subtitle_count,
+        "text": "".join(full_text_parts),
     }
     click.echo(json.dumps(result, ensure_ascii=False, indent=2))
 
