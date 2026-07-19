@@ -1,6 +1,6 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-19 当前源码、真实 `--help` 和实际调用结果编写。目前统一入口包含 4 个命令组和 22 个子命令。
+本清单基于 2026-07-19 当前源码、真实 `--help` 和实际 API 调用结果编写。目前统一入口包含 4 个命令组和 21 个子命令。
 
 > 首选入口是 `python scripts/main.py <命令组> <子命令>`。`scripts/commands/` 下的四个独立 Python 入口继续保留，用于兼容已有调用和开发调试。工程没有打包产物，用户未明确要求首次打包时不创建 exe。
 
@@ -10,9 +10,8 @@
 
 | 能力 | 默认最高质量配置 | 明确降档方式 |
 |---|---|---|
-| 本地音视频转 SRT | `faster-whisper` 的 `large-v3`、Beam Size 5、VAD | 明确传入较小的 `--model`，或使用 `--compute-type int8` |
-| 短音频识别 | `qwen3-asr-flash` | 官方当前只提供该专用模型，不存在可替换的 Plus 档 |
-| 上下文增强识别 | `fun-asr-flash-2026-06-15` | 官方当前只为该模型提供上下文增强 |
+| 短音频识别 | 最新快照 `qwen3-asr-flash-2026-02-10`，支持 System Context、语言和 ITN | 不提供本地模型降档 |
+| 备用上下文增强识别 | `fun-asr-flash-2026-06-15` | 仅在明确选择 Fun-ASR-Flash 时使用 |
 | 长音频识别 | `qwen3-asr-flash-filetrans` 或功能完整的 `fun-asr` | 按是否需要热词、说话人分离和敏感词选择，不按价格自动切换 |
 | 声音复刻与合成 | `qwen-audio-3.0-tts-plus`，复刻样本默认最多保留 20 秒 | 明确传入 `--model qwen-audio-3.0-tts-flash` |
 | 通用图片理解 | `qwen3.7-plus`、思考模式、高分辨率、`8192` 输出 Token | 使用 `--no-thinking`、`--standard-resolution`、较小的 `--max-tokens` 或明确指定其他模型 |
@@ -25,10 +24,9 @@
 
 | 命令组 | 子命令 | 用途 |
 |---|---|---|
-| 语音识别 | `recognize` | 识别本地短音频并返回情感标注 |
+| 语音识别 | `recognize` | 使用 Qwen 最新快照、System Context、语言和 ITN 识别本地短音频 |
 | 语音识别 | `recognize-context` | 使用上下文增强识别本地短音频 |
-| 语音识别 | `transcribe-local` | 使用本地 Whisper 模型识别音频或视频并生成 SRT |
-| 语音识别 | `transcribe-long` | 异步转写公网长音频并返回时间戳和情感 |
+| 语音识别 | `transcribe-long` | 异步转写公网长音频并返回时间戳、情感或 SRT |
 | 语音识别 | `transcribe-advanced` | 使用热词、说话人分离和敏感词过滤转写公网音频 |
 | 语音识别 | `hotword-create` | 创建 Fun-ASR 热词表 |
 | 语音识别 | `hotword-status` | 查询热词表状态 |
@@ -75,12 +73,12 @@ python scripts/main.py key <status|set|remove> --help
 
 | 项目 | 当前行为 | 尚未通过 CLI 暴露的能力 |
 |---|---|---|
-| 本地字幕 | `transcribe-local` 直接读取本地音频或视频并写出 UTF-8 SRT，不需要 API Key | 不支持说话人分离、双语翻译字幕和逐词卡拉 OK 字幕 |
-| 本地短音频 | `recognize` 和 `recognize-context` 接受本地文件 | `recognize` 未主动检查 10 MB、5 分钟上限 |
+| 本地短音频 | `recognize` 接受本地文件，支持 Qwen System Context、单一语言和 ITN；`recognize-context` 保留 Fun-ASR-Flash 方案 | `recognize` 未主动检查 10 MB、5 分钟上限 |
 | 长音频 | `transcribe-long` 和 `transcribe-advanced` 只接受公网 HTTP/HTTPS URL | 不能直接提交本地长音频，也没有 OSS 上传命令 |
-| 语言与 ITN | 短音频自动识别语言；高级转写支持重复传入 `--language-hint` | `recognize` 和 `transcribe-long` 不能指定语言，`enable_itn` 固定为 `false` |
-| 音频通道 | 长音频和高级转写固定处理 `channel_id=[0]` | 不能选择其他通道或执行多通道转写 |
-| 上下文增强 | 支持一段不超过 400 字符的用户上下文 | 不支持多轮 `user` / `assistant` 上下文消息 |
+| 语言与 ITN | `recognize` 和 `transcribe-long` 支持单一语言与 ITN；高级转写支持重复语言提示 | 混合语种时应保留 `language=auto`，不能同时强制多个 Qwen 语言代码 |
+| 音频通道 | `transcribe-long` 可重复传入 `--channel-id`；高级转写仍固定通道 `0` | 多音轨 Filetrans 按音轨单独计费 |
+| 上下文增强 | `recognize --context` 使用 Qwen System Message；`recognize-context` 使用 Fun-ASR-Flash 单段上下文 | Qwen Filetrans 正式参数未提供 System Context 或热词 |
+| SRT 字幕 | `transcribe-long --output-srt` 根据云端句级时间戳写出 UTF-8 SRT | 只接受公网音频 URL；多音轨字幕会增加通道前缀 |
 | 热词 | 支持创建、查询、列表、删除和在转写时使用热词表 | 同一条创建命令中的全部热词共用一个权重和语言，不能逐词设置 |
 | 流式与生产回调 | 当前使用同步响应或异步轮询 | 未封装流式输出、EventBridge 回调和批量任务调度 |
 | 声音复刻与合成 | 默认使用 `qwen-audio-3.0-tts-plus`，可明确指定 Flash；支持本地样本上传、音色管理、控制指令、情感标签和结果下载 | 只封装已实测的非流式输出；未封装需要 Workspace ID 的 SSE 流式输出、声音设计、实时合成和其他模型系列 |
@@ -91,14 +89,14 @@ python scripts/main.py key <status|set|remove> --help
 
 ### `recognize`
 
-**用途：** 使用固定模型 `qwen3-asr-flash` 识别不超过 5 分钟、10 MB 的本地音频，同时返回文本、情感和语言标注。
+**用途：** 使用最新快照 `qwen3-asr-flash-2026-02-10` 识别不超过 5 分钟、10 MB 的本地音频，同时返回文本、情感和语言标注。可通过 Qwen System Context 提供背景文本和实体词表，减少专有词和同音词误识别。
 
-**当前限制：** 模型自动判断语言，CLI 不能指定语言；ITN 固定关闭；代码尚未在提交前主动检查 10 MB 和 5 分钟限制，超限文件由接口返回错误。
+**当前限制：** System Context 只作为识别参考，不能设置模型角色；混合语种音频不应强制指定单一语言。代码尚未主动检查 10 MB 和 5 分钟限制，超限文件由接口返回错误。
 
 **完整语法：**
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py recognize <音频文件>
+python scripts/main.py speech recognize <音频文件> [--context <背景和实体词>] [--language <语言代码|auto>] [--itn|--no-itn]
 ```
 
 **参数：**
@@ -106,18 +104,21 @@ python scripts/commands/speech_recognition_commands.py recognize <音频文件>
 | 参数 | 说明 | 必填 | 默认值 / 可选值 |
 |---|---|---|---|
 | `<音频文件>` | 本地音频文件路径 | 是 | 支持 `.aac`、`.flac`、`.m4a`、`.mp3`、`.ogg`、`.wav` |
+| `--context <背景和实体词>` | 通过 Qwen System Message 提供背景文本和实体词表 | 否 | 默认不使用上下文 |
+| `--language <语言代码\|auto>` | 已知单一语种时指定语言 | 否 | 默认 `auto`；常用 `zh`、`yue`、`en` |
+| `--itn` / `--no-itn` | 是否把中英文数字转换为阿拉伯数字 | 否 | 默认 `--no-itn` |
 
 **示例：**
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py recognize "runtime/inputs/FBAFB6CA-3EE7-42cd-B256-AF255C40D577.mp3"
+python scripts/main.py speech recognize "runtime/inputs/FBAFB6CA-3EE7-42cd-B256-AF255C40D577.mp3" --language zh --context "背景词汇和实体词：年下、时下、财富、贫穷、名利、贯穿一生。" --no-itn
 ```
 
 **输出示例：**
 
 ```json
 {
-  "text": "你的年下如果和你的时下相合……",
+  "text": "你的年下如果和你的时下相合，那么你就不需要担心你的财富问题……就这四个字贯穿一生。",
   "annotations": [
     {
       "emotion": "neutral",
@@ -125,15 +126,20 @@ python scripts/commands/speech_recognition_commands.py recognize "runtime/inputs
       "type": "audio_info"
     }
   ],
-  "model": "qwen3-asr-flash",
+  "model": "qwen3-asr-flash-2026-02-10",
+  "context": "背景词汇和实体词：年下、时下、财富、贫穷、名利、贯穿一生。",
+  "language": "zh",
+  "enable_itn": false,
   "audio_file": "C:\\path\\to\\audio.mp3",
   "request_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   "usage": {
     "seconds": 17,
-    "total_tokens": 504
+    "total_tokens": 529
   }
 }
 ```
+
+> 本轮真实 CLI 已确认 `--context`、`--language zh` 和最新快照可组合使用，并正确识别“年下、时下、贯穿一生”。
 
 ### `recognize-context`
 
@@ -176,86 +182,16 @@ python scripts/commands/speech_recognition_commands.py recognize-context "runtim
 }
 ```
 
-### `transcribe-local`
-
-**用途：** 使用 `faster-whisper` 在本机直接识别音频或视频，并把真实分段时间戳写入 UTF-8 SRT 字幕文件。该命令不调用百炼，不需要 `DASHSCOPE_API_KEY`。
-
-**完整语法：**
-
-```powershell
-python scripts/main.py speech transcribe-local <本地音频或视频> [--output <SRT文件>] [--language <语言代码|auto>] [--model <模型名称或路径>] [--device <auto|cpu|cuda>] [--compute-type <计算精度>]
-```
-
-**参数：**
-
-| 参数 | 说明 | 必填 | 默认值 / 可选值 |
-|---|---|---|---|
-| `<本地音频或视频>` | 需要转写的本地媒体文件 | 是 | 支持 `.aac`、`.avi`、`.flac`、`.m4a`、`.mkv`、`.mov`、`.mp3`、`.mp4`、`.ogg`、`.wav`、`.webm`、`.wmv` |
-| `--output <SRT文件>` | SRT 字幕输出路径 | 否 | 默认 `runtime/outputs/<输入文件名>.srt`，必须使用 `.srt` 扩展名 |
-| `--language <语言代码\|auto>` | 指定识别语言 | 否 | 默认 `auto`；可传 `zh`、`en` 等 Whisper 语言代码 |
-| `--model <模型名称或路径>` | faster-whisper 模型名称或本地模型目录 | 否 | 默认最高质量 `large-v3` |
-| `--device <auto\|cpu\|cuda>` | 本地推理设备 | 否 | 默认 `auto`；可选 `auto`、`cpu`、`cuda` |
-| `--compute-type <计算精度>` | CTranslate2 计算精度 | 否 | 默认 `auto`；常用 `float16`、`int8` |
-
-**最高质量示例：**
-
-```powershell
-python scripts/main.py speech transcribe-local "runtime/inputs/audio.mp3" --output "runtime/outputs/audio.srt" --language zh
-```
-
-**低资源设备示例：**
-
-```powershell
-python scripts/main.py speech transcribe-local "runtime/inputs/audio.mp3" --output "runtime/outputs/audio.srt" --language zh --model large-v3-turbo --device cpu --compute-type int8
-```
-
-**真实输出示例：**
-
-```json
-{
-  "model": "large-v3-turbo",
-  "requested_device": "cpu",
-  "requested_compute_type": "int8",
-  "device": "cpu",
-  "compute_type": "int8",
-  "device_fallback_reason": null,
-  "media_file": "C:\\path\\to\\audio.mp3",
-  "output_file": "C:\\path\\to\\audio.srt",
-  "encoding": "utf-8-sig",
-  "language": "zh",
-  "language_probability": 1.0,
-  "duration_seconds": 17.789375,
-  "subtitle_count": 7,
-  "text": "识别得到的完整文案"
-}
-```
-
-**SRT 输出结构：**
-
-```srt
-1
-00:00:00,000 --> 00:00:02,980
-第一句字幕
-
-2
-00:00:02,980 --> 00:00:06,220
-第二句字幕
-```
-
-**运行说明：** 使用前安装 `faster-whisper`：`python -m pip install -U faster-whisper`。首次使用某个模型时需要联网下载，之后从本地缓存加载；无法访问默认模型仓库时，也可用 `--model` 指向已经下载的本地模型目录。默认 `large-v3` 质量最高，但对内存和显存要求较高。Windows 的 `device=auto` 会在加载模型前检查 CUDA 12 和 cuDNN 9 运行库；缺失时直接使用 CPU `int8`，并通过 `device_fallback_reason` 说明原因。命令固定使用 Beam Size 5 和 VAD。Whisper 可能产生繁体字、同音词或专有名词误识别，重要字幕仍需人工校对。
-
----
-
 ### `transcribe-long`
 
-**用途：** 使用固定模型 `qwen3-asr-flash-filetrans` 异步转写公网音频 URL，支持最长 12 小时、2 GB，并返回句级或字级时间戳和情感字段。
+**用途：** 使用固定模型 `qwen3-asr-flash-filetrans` 异步转写公网音频 URL，支持最长 12 小时、2 GB，可指定语言、ITN 和一条或多条音轨，并把句级结果直接写成 SRT。
 
-**当前限制：** 只接受公网 URL，不能直接传入本地长音频；固定处理通道 `0`，ITN 固定关闭，不能通过 CLI 指定语言。
+**当前限制：** 只接受公网 HTTP/HTTPS URL，不能直接传入本地长音频；每条音轨单独计费。Qwen Filetrans 的正式参数不支持 System Context 或热词，需要专业词增强时改用 `transcribe-advanced`。
 
 **完整语法：**
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py transcribe-long <音频URL> [--timestamp-level <sentence|word>] [--timeout <秒>]
+python scripts/main.py speech transcribe-long <音频URL> [--timestamp-level <sentence|word>] [--language <语言代码|auto>] [--itn|--no-itn] [--channel-id <音轨索引> ...] [--output-srt <SRT文件>] [--timeout <秒>]
 ```
 
 **参数：**
@@ -264,18 +200,22 @@ python scripts/commands/speech_recognition_commands.py transcribe-long <音频UR
 |---|---|---|---|
 | `<音频URL>` | 公网可下载的音频 URL | 是 | 必须以 `http://` 或 `https://` 开头 |
 | `--timestamp-level <sentence|word>` | 时间戳级别 | 否 | 默认 `sentence`；可选 `sentence`、`word` |
+| `--language <语言代码\|auto>` | 已知单一语种时指定语言 | 否 | 默认 `auto`；常用 `zh`、`yue`、`en` |
+| `--itn` / `--no-itn` | 是否把中英文数字转换为阿拉伯数字 | 否 | 默认 `--no-itn` |
+| `--channel-id <音轨索引>` | 指定待识别音轨，可重复传入 | 否 | 默认 `0`；每条音轨单独计费 |
+| `--output-srt <SRT文件>` | 根据句级时间戳同时写出字幕 | 否 | 默认不写文件；必须使用 `.srt` 扩展名，编码为 UTF-8 BOM |
 | `--timeout <秒>` | 等待异步任务完成的最长时间 | 否 | 默认 `1800`，最小 `60` |
 
 **句级时间戳示例：**
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py transcribe-long "https://dashscope.oss-cn-beijing.aliyuncs.com/audios/welcome.mp3" --timestamp-level sentence --timeout 120
+python scripts/main.py speech transcribe-long "https://dashscope.oss-cn-beijing.aliyuncs.com/audios/welcome.mp3" --language zh --timestamp-level sentence --timeout 120
 ```
 
 **字级时间戳示例：**
 
 ```powershell
-python scripts/commands/speech_recognition_commands.py transcribe-long "https://dashscope.oss-cn-beijing.aliyuncs.com/audios/welcome.mp3" --timestamp-level word --timeout 120
+python scripts/main.py speech transcribe-long "https://dashscope.oss-cn-beijing.aliyuncs.com/audios/welcome.mp3" --language zh --itn --timestamp-level word --channel-id 0 --output-srt "runtime/outputs/welcome.srt" --timeout 120
 ```
 
 **输出示例：**
@@ -285,6 +225,11 @@ python scripts/commands/speech_recognition_commands.py transcribe-long "https://
   "model": "qwen3-asr-flash-filetrans",
   "task_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   "timestamp_level": "word",
+  "language": "zh",
+  "enable_itn": true,
+  "channel_ids": [0],
+  "srt_output_file": "C:\\path\\to\\runtime\\outputs\\welcome.srt",
+  "subtitle_count": 1,
   "usage": {
     "seconds": 1
   },
@@ -311,6 +256,16 @@ python scripts/commands/speech_recognition_commands.py transcribe-long "https://
   }
 }
 ```
+
+**SRT 输出示例：**
+
+```srt
+1
+00:00:00,000 --> 00:00:01,440
+欢迎使用阿里云。
+```
+
+> `timestamp-level=word` 会同时保留句级结果和 `words[]`，并采用 VAD + 标点断句；SRT 仍按句级时间写出。多音轨 SRT 会在字幕文字前增加 `[通道N]`。
 
 ### `hotword-create`
 
@@ -1139,13 +1094,13 @@ python scripts/commands/env_writer.py remove
 
 ## 当前封装状态
 
-| 项目 | 当前状态 | 2026-07-19 本轮检查 |
+| 项目 | 当前状态 | 2026-07-20 本轮检查 |
 |---|---|---|
-| 本地音视频转 SRT | 已封装 | 17.789 秒 MP3 使用 `small` 和 `large-v3-turbo` 分别生成 8 条和 7 条字幕；43.119 秒 MP4 使用 `small` 直接生成 20 条字幕；默认 `large-v3` 因本机可用内存不足未完成推理 |
-| 短音频文本、情感和语言 | 已封装 | 真实 CLI 通过，返回 `emotion=neutral`、`language=zh` |
-| 上下文增强 | 已封装单轮文本上下文 | 真实 CLI 通过 |
-| 长音频异步转写 | 已封装公网 URL | 真实 CLI 通过；历史已使用超过 5 分钟人声音频验证 |
-| 句级和字级时间戳 | 已封装 | 字级时间戳真实 CLI 通过 |
+| 短音频文本、情感和语言 | 已封装 | 最新快照真实 CLI 通过，支持 `--language` 和 ITN，返回 `emotion=neutral`、`language=zh` |
+| Qwen System Context | 已封装单轮背景和实体词 | 真实 CLI 正确识别“年下、时下、贯穿一生”；Fun-ASR-Flash 上下文命令继续保留 |
+| 长音频异步转写 | 已封装公网 URL | 真实 CLI 通过，支持语言、ITN 和重复音轨参数；历史已使用超过 5 分钟人声音频验证 |
+| 句级、字级时间戳和 SRT | 已封装 | 字级时间戳与云端句级 SRT 真实 CLI 通过，生成 UTF-8 BOM 字幕 |
+| 本地 Whisper/VAD | 已移除 | 不再提供本地模型、VAD 或 `transcribe-local`；字幕统一使用 Filetrans 云端时间戳生成 |
 | 热词创建、查询、列表和删除 | 已封装 | 本轮只执行无写操作的列表查询；创建和删除沿用历史实测结果 |
 | 说话人分离 | 已封装 | 真实 CLI 通过并返回 `speaker_id` |
 | 敏感词替换和移除 | 已封装 | `阿里巴巴` 替换为 `****`，`实验室` 成功移除 |
