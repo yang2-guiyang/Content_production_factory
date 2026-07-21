@@ -1,6 +1,6 @@
 # Content Production Factory CLI 命令清单
 
-本清单基于 2026-07-20 当前源码、真实 `--help` 和实际 API 调用结果编写。目前统一入口包含 6 个命令组和 26 个子命令。
+本清单基于 2026-07-21 当前源码、真实 `--help` 和实际 API 调用结果编写。目前统一入口包含 7 个命令组和 31 个子命令。
 
 > 首选入口是 `python scripts/main.py <命令组> <子命令>`。`scripts/commands/` 下的六个独立 Python 入口继续保留，用于兼容已有调用和开发调试。工程没有打包产物，用户未明确要求首次打包时不创建 exe。
 
@@ -17,8 +17,9 @@
 | 通用图片理解 | `qwen3.7-plus`、思考模式、高分辨率、`8192` 输出 Token | 使用 `--no-thinking`、`--standard-resolution`、较小的 `--max-tokens` 或明确指定其他模型 |
 | 视频与帧序列理解 | `qwen3.7-plus`、思考模式、`8192` 输出 Token | 使用 `--no-thinking`、较小的 `--max-tokens` 或明确指定其他模型 |
 | 专用 OCR | `qwen3.5-ocr`、自动旋转矫正、`8192` 输出 Token | 使用 `--no-rotate`、较小的 `--max-tokens` 或明确指定其他兼容模型 |
+| 图片生成 | `gpt-image-2`、v2 同步接口、`b64_json`、1K 分辨率、high 质量 | 明确传入 `--quality low` 或 `--model nano-banana-fast`；升级分辨率用 `--resolution 4K` |
 
-> 时间戳粒度、说话人分离、敏感词规则、热词、OCR 任务类型、视频 FPS 等参数决定任务行为，不是质量档位，不会仅因“默认最高质量”而擅自开启或改写。
+> 时间戳粒度、说话人分离、敏感词规则、热词、OCR 任务类型、视频 FPS 等参数决定任务行为，不是质量档位，不会仅因”默认最高质量”而擅自开启或改写。
 
 ## 当前命令概览
 
@@ -47,6 +48,11 @@
 | 视觉理解 | `ocr-pdf` | 使用 Qwen-OCR 直接解析公网 PDF 文档 |
 | 视觉理解 | `analyze-video` | 分析本地或公网视频文件 |
 | 视觉理解 | `analyze-frames` | 把至少四张连续图片作为视频帧分析 |
+| 图片生成 | `generate` | v2 同步文生图，直接返回图片数据（推荐） |
+| 图片生成 | `generate-async` | v1 异步文生图，返回 task_id 并可选轮询下载 |
+| 图片生成 | `edit` | v2 同步图片编辑，上传图片按提示词修改 |
+| 图片生成 | `query-task` | 查询异步任务状态，完成后自动下载 |
+| 图片生成 | `list-models` | 列出所有图片模型和价格 |
 | 密钥管理 | `status` | 检查 API Key 是否已配置 |
 | 密钥管理 | `set` | 新增或更新 API Key |
 | 密钥管理 | `remove` | 删除 API Key |
@@ -67,6 +73,8 @@ python scripts/main.py visual --help
 python scripts/main.py visual <子命令> --help
 python scripts/main.py key --help
 python scripts/main.py key <status|set|remove> --help
+python scripts/main.py image --help
+python scripts/main.py image <generate|generate-async|edit|query-task|list-models> --help
 ```
 
 统一入口映射如下。后续各命令章节仍保留独立入口语法，参数完全相同；把对应前缀替换为统一入口前缀即可。
@@ -78,7 +86,292 @@ python scripts/main.py key <status|set|remove> --help
 | 语音识别 | `python scripts/main.py speech` | `python scripts/commands/speech_recognition_commands.py` |
 | 声音复刻与语音合成 | `python scripts/main.py tts` | `python scripts/commands/speech_synthesis_commands.py` |
 | 视觉理解与 OCR | `python scripts/main.py visual` | `python scripts/commands/visual_understanding_commands.py` |
+| 图片生成与编辑 | `python scripts/main.py image` | `python scripts/commands/image_generation_commands.py` |
 | 密钥管理 | `python scripts/main.py key` | `python scripts/commands/env_writer.py` |
+
+## 图片生成
+
+图片生成通过麦子科技 API（`https://www.maizitech.xyz`）调用，支持 12 款模型，覆盖文生图、图生图、图片编辑和 3D 生成。v1 为异步接口（返回 `task_id`，结果保存 24 小时），v2 为同步接口（直接返回 base64 或 URL）。
+
+> 图片生成使用独立的 `MAIZI_API_KEY`，通过 `python scripts/main.py key set --service maizi <密钥>` 配置。
+
+### 图片模型
+
+| 模型 ID | 名称 | 价格 | 分辨率 | 接口 |
+|---|---|---|---|---|
+| `gpt-image-2` | GPT Image 2 | $0.0090~0.0440/次 | 1K/2K/4K | v1 + v2 |
+| `gpt-image-2-official` | GPT Image 2 高质量 | $0.0100起/次 | 1K/2K/4K | v1 + v2 |
+| `gpt-image-2-vip` | GPT Image 2 VIP | $0.0220~0.0570/次 | 1K/2K/4K | v1 + v2 |
+| `nano-banana-fast` | NanoBanana 极速 | $0.0090/次 | 1K | v1 + v2 |
+| `nano-banana-2-lite` | NanoBanana 2 Lite | $0.0090/次 | 1K | v1 + v2 |
+| `nano-banana-2` | NanoBanana 标准 | $0.0180/次 | 1K/2K/4K | v1 + v2 |
+| `nano-banana-2-vip` | NanoBanana 2 VIP | $0.0642~0.1392/次 | 1K/2K/4K | v1 + v2 |
+| `nano-banana-pro` | NanoBanana 专业 | $0.0270/次 | 1K/2K/4K | v1 + v2 |
+| `nano-banana-pro-vip` | NanoBanana Pro VIP | $0.1000~0.2000/次 | 1K/2K/4K | v1 + v2 |
+| `doubao-seedream-5-0-lite` | Seedream 5.0 Lite | $0.0336/次 | 2K/3K/4K | v1 + v2 |
+| `doubao-seedream-5-0-pro` | Seedream 5.0 Pro | $0.0432~0.0864/次 | 1K/2K | v1 + v2 |
+| `seed3d-v2-image-to-3d` | Seed3D 图生 3D | — | — | 仅 v1 |
+
+### `generate`
+
+**用途：** 使用 v2 同步接口文生图，直接返回 base64 图片或 URL。兼容 OpenAI SDK，无需轮询。推荐用于自动化脚本和后端服务。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py image generate --prompt <提示词> [--model <模型>] [--size <比例或像素>] [--resolution <1K|2K|4K>] [--quality <low|medium|high>] [--image <参考图> ...] [--response-format <b64_json|url>] [--output <输出文件>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--prompt <提示词>` | 描述要生成的图片内容 | 是 | 任意文本 |
+| `--model <模型>` | 图片生成模型 | 否 | 默认 `gpt-image-2`；不支持 `seed3d-v2-image-to-3d` |
+| `--size <比例或像素>` | 画面比例或像素尺寸 | 否 | 默认 `auto`；支持 `1:1`、`16:9`、`9:16` 等比例，也支持 `1024x1024` 等像素值 |
+| `--resolution <1K\|2K\|4K>` | 输出分辨率 | 否 | 默认 `1K`；升级用 `--resolution 4K` |
+| `--quality <low\|medium\|high>` | 图片质量 | 否 | 默认最高 `high`；显式降档用 `--quality low` |
+| `--image <参考图>` | 参考图片路径或 URL，可重复传入 | 否 | 最多 9 张；本地文件自动转 base64 data URI |
+| `--response-format <b64_json\|url>` | 返回格式 | 否 | 默认 `b64_json` |
+| `--output <输出文件>` | 保存图片的本地路径 | 否 | 默认自动命名到 `runtime/outputs/` |
+
+**文生图示例：**
+
+```powershell
+python scripts/main.py image generate --prompt "一只可爱的猫咪在弹钢琴" --size "1:1" --output "runtime/outputs/cat_piano.png"
+```
+
+**降档示例（节省成本）：**
+
+```powershell
+python scripts/main.py image generate --prompt "一只可爱的猫咪在弹钢琴" --size "1:1" --resolution "1K" --quality "low"
+```
+
+**图生图示例：**
+
+```powershell
+python scripts/main.py image generate --model "nano-banana-fast" --prompt "将这张图片转为水彩画风格" --size "1:1" --image "runtime/inputs/photo.jpg" --output "runtime/outputs/watercolor.png"
+```
+
+**输出示例：**
+
+```json
+{
+  "model": "gpt-image-2",
+  "prompt": "一只可爱的猫咪在弹钢琴",
+  "size": "1:1",
+  "resolution": null,
+  "quality": null,
+  "response_format": "b64_json",
+  "api_version": "v2",
+  "saved_files": [
+    {
+      "index": 0,
+      "output_file": "C:\\path\\to\\runtime\\outputs\\gpt_image_2_1690000000.png",
+      "output_bytes": 245760
+    }
+  ],
+  "usage": {
+    "total_cost": 0.018
+  }
+}
+```
+
+---
+
+### `generate-async`
+
+**用途：** 使用 v1 异步接口文生图。接口立即返回 `task_id`，默认轮询等待完成并自动下载。`--no-wait` 可跳过轮询，稍后通过 `image query-task` 查询和下载。`seed3d-v2-image-to-3d`（图生 3D）仅支持此模式，需传入 1 张参考图，完成后下载 ZIP。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py image generate-async --prompt <提示词> [--model <模型>] [--size <比例或像素>] [--resolution <1K|2K|4K>] [--quality <low|medium|high>] [--image <参考图> ...] [--output <输出文件>] [--wait|--no-wait] [--timeout <秒>] [--callback-url <回调URL>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--prompt <提示词>` | 描述要生成的图片内容 | 是 | 任意文本 |
+| `--model <模型>` | 图片生成模型 | 否 | 默认 `gpt-image-2`；`seed3d-v2-image-to-3d` 仅支持此模式 |
+| `--size <比例或像素>` | 画面比例或像素尺寸 | 否 | 默认 `auto` |
+| `--resolution <1K\|2K\|4K>` | 输出分辨率 | 否 | 默认 `1K`；升级用 `--resolution 4K` |
+| `--quality <low\|medium\|high>` | 图片质量 | 否 | 默认最高 `high` |
+| `--image <参考图>` | 参考图片路径或 URL，可重复传入 | 否 | 最多 9 张；`seed3d-v2-image-to-3d` 限 1 张 |
+| `--output <输出文件>` | 保存图片的本地路径 | 否 | 默认自动命名到 `runtime/outputs/` |
+| `--wait` / `--no-wait` | 是否等待完成并下载 | 否 | 默认 `--wait` |
+| `--timeout <秒>` | 等待完成的最长时间 | 否 | 默认 `600`，范围 `60`～`7200` |
+| `--callback-url <回调URL>` | 完成后的回调通知地址 | 否 | 暂仅供接口保留，不启用轮询 |
+
+**异步文生图示例：**
+
+```powershell
+python scripts/main.py image generate-async --prompt "赛博朋克风格的城市夜景" --size "16:9" --resolution "2K" --timeout 300
+```
+
+**仅获取 task_id 示例：**
+
+```powershell
+python scripts/main.py image generate-async --prompt "山水画风格的江南古镇" --no-wait
+```
+
+**Seed3D 图生 3D 示例：**
+
+```powershell
+python scripts/main.py image generate-async --model "seed3d-v2-image-to-3d" --prompt "生成3D模型" --image "runtime/inputs/character.png" --timeout 1200
+```
+
+**输出示例（--wait）：**
+
+```json
+{
+  "model": "gpt-image-2",
+  "prompt": "赛博朋克风格的城市夜景",
+  "api_version": "v1",
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "completed",
+  "saved_files": [
+    {
+      "index": 0,
+      "output_file": "C:\\path\\to\\runtime\\outputs\\gpt_image_2_1690000100.png",
+      "output_bytes": 1048576
+    }
+  ]
+}
+```
+
+**输出示例（--no-wait）：**
+
+```json
+{
+  "model": "gpt-image-2",
+  "prompt": "山水画风格的江南古镇",
+  "api_version": "v1",
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "pending",
+  "tip": "结果文件保存 24 小时，使用 image query-task a1b2c3d4-e5f6-7890-abcd-ef1234567890 查询和下载"
+}
+```
+
+---
+
+### `query-task`
+
+**用途：** 查询 v1 异步任务状态。待处理或进行中的任务会自动轮询直到完成；已完成的任务直接下载结果。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py image query-task <任务ID> [--output <输出文件>] [--timeout <秒>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<任务ID>` | `generate-async --no-wait` 返回的 task_id | 是 | — |
+| `--output <输出文件>` | 保存图片的本地路径 | 否 | 默认自动命名 |
+| `--timeout <秒>` | 等待完成的最长时间 | 否 | 默认 `600` |
+
+**示例：**
+
+```powershell
+python scripts/main.py image query-task "a1b2c3d4-e5f6-7890-abcd-ef1234567890" --output "runtime/outputs/result.png"
+```
+
+**输出示例：**
+
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "completed",
+  "saved_files": [
+    {
+      "index": 0,
+      "output_file": "C:\\path\\to\\runtime\\outputs\\result.png",
+      "output_bytes": 1048576
+    }
+  ]
+}
+```
+
+---
+
+### `edit`
+
+**用途：** 使用 v2 同步接口编辑本地图片。支持带遮罩的局部编辑（白色区域修改，透明区域保留）。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py image edit --image <图片文件> --prompt <提示词> [--model <模型>] [--mask <遮罩图片>] [--size <比例或像素>] [--quality <low|medium|high>] [--response-format <b64_json|url>] [--output <输出文件>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--image <图片文件>` | 待编辑的本地图片 | 是 | PNG/JPG |
+| `--prompt <提示词>` | 描述编辑要求 | 是 | 任意文本 |
+| `--model <模型>` | 图片编辑模型 | 否 | 默认 `gpt-image-2-official` |
+| `--mask <遮罩图片>` | 遮罩图片，白色区域编辑，透明区域保持不变 | 否 | PNG，与编辑图片尺寸一致 |
+| `--size <比例或像素>` | 输出画面比例或像素 | 否 | 默认保持原比例 |
+| `--quality <low\|medium\|high>` | 图片质量 | 否 | 默认最高 `high` |
+| `--response-format <b64_json\|url>` | 返回格式 | 否 | 默认 `b64_json` |
+| `--output <输出文件>` | 保存编辑结果的路径 | 否 | 默认自动命名到 `runtime/outputs/` |
+
+**图片编辑示例：**
+
+```powershell
+python scripts/main.py image edit --image "runtime/inputs/photo.png" --prompt "将背景替换为海边日落"
+```
+
+**带遮罩局部编辑示例：**
+
+```powershell
+python scripts/main.py image edit --image "runtime/inputs/photo.png" --mask "runtime/inputs/mask.png" --prompt "将选中区域替换为蓝天白云" --size "1:1"
+```
+
+**输出示例：**
+
+```json
+{
+  "model": "gpt-image-2-official",
+  "prompt": "将背景替换为海边日落",
+  "image": "C:\\path\\to\\runtime\\inputs\\photo.png",
+  "mask": null,
+  "size": null,
+  "quality": null,
+  "response_format": "b64_json",
+  "api_version": "v2 edits",
+  "saved_files": [
+    {
+      "index": 0,
+      "output_file": "C:\\path\\to\\runtime\\outputs\\gpt_image_2_official_edited_1690000200.png",
+      "output_bytes": 378240
+    }
+  ]
+}
+```
+
+---
+
+### `list-models`
+
+**用途：** 列出所有支持的图片模型、价格和分辨率信息。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py image list-models
+```
+
+**参数：** 无。
+
+**输出示例：** 参见上文"图片模型"表格。
+
+---
 
 ## 当前适用范围与已知限制
 
@@ -97,6 +390,9 @@ python scripts/main.py key <status|set|remove> --help
 | 声音复刻与合成 | 默认使用 `qwen-audio-3.0-tts-plus`，可明确指定 Flash；支持本地样本上传、音色管理、控制指令、情感标签和结果下载 | 只封装已实测的非流式输出；未封装需要 Workspace ID 的 SSE 流式输出、声音设计、实时合成和其他模型系列 |
 | 专用 OCR | 图片支持七种内置任务、旋转矫正、像素阈值和结构化结果；本地 PDF 可先通过 `file upload` 取得 URL | `ocr-pdf` 不会自动上传本地 PDF；未封装多轮 OCR 对话和 Batch 任务创建 |
 | Skill 路由 | 根 `SKILL.md` 根据文件、语音或视觉任务选择命令 | 详细参数统一从本清单读取 |
+| 图片生成 | v1 返回签名 URL 24 小时有效，v2 默认返回 base64 | URL 图片未自动续期；seed3d ZIP 下载链接也会过期 |
+| 图片编辑 | 仅支持本地文件上传，使用 multipart/form-data | 不支持公网 URL 作为编辑源图；遮罩须与图片尺寸对齐 |
+| 图片 API Key | 通过 `key set --service maizi` 配置，存入 `scripts/.env` | 与 DashScope 使用不同密钥，通过 `--service` 切换 |
 
 ## 百炼文件管理
 
@@ -1257,58 +1553,69 @@ python scripts/commands/visual_understanding_commands.py analyze-frames --frame 
 
 ## 密钥管理
 
+密钥管理支持两个服务：`dashscope`（阿里云百炼）和 `maizi`（麦子科技图片生成）。通过 `--service` 选项切换。
+
 ### `status`
 
-**用途：** 检查 `scripts/.env` 中是否已配置 DashScope API Key，不显示密钥内容。
+**用途：** 检查 `scripts/.env` 中是否已配置指定服务的 API Key，不显示密钥内容。
 
 **完整语法：**
 
 ```powershell
-python scripts/commands/env_writer.py status
-```
-
-**参数：** 无。
-
-**示例：**
-
-```powershell
-python scripts/commands/env_writer.py status
-```
-
-**输出示例：**
-
-```json
-{
-  "configured": true
-}
-```
-
-### `set`
-
-**用途：** 新增或更新 `scripts/.env` 中的 DashScope API Key，并保留其他配置项。
-
-**完整语法：**
-
-```powershell
-python scripts/commands/env_writer.py set <API密钥>
+python scripts/main.py key status [--service <dashscope|maizi>]
 ```
 
 **参数：**
 
 | 参数 | 说明 | 必填 | 默认值 / 可选值 |
 |---|---|---|---|
-| `<API密钥>` | 阿里云百炼 DashScope API Key | 是 | 无 |
+| `--service <dashscope\|maizi>` | 目标服务 | 否 | 默认 `dashscope` |
 
 **示例：**
 
 ```powershell
-python scripts/commands/env_writer.py set sk-xxx
+python scripts/main.py key status
+python scripts/main.py key status --service maizi
 ```
 
 **输出示例：**
 
 ```json
 {
+  "service": "maizi",
+  "configured": true
+}
+```
+
+### `set`
+
+**用途：** 新增或更新 `scripts/.env` 中指定服务的 API Key，并保留其他配置项。
+
+**完整语法：**
+
+```powershell
+python scripts/main.py key set <API密钥> [--service <dashscope|maizi>]
+```
+
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `<API密钥>` | API Key | 是 | 无 |
+| `--service <dashscope\|maizi>` | 目标服务 | 否 | 默认 `dashscope` |
+
+**示例：**
+
+```powershell
+python scripts/main.py key set sk-xxx
+python scripts/main.py key set --service maizi sk-your-maizi-key
+```
+
+**输出示例：**
+
+```json
+{
+  "service": "maizi",
   "configured": true
 }
 ```
@@ -1317,26 +1624,31 @@ python scripts/commands/env_writer.py set sk-xxx
 
 ### `remove`
 
-**用途：** 从 `scripts/.env` 删除 DashScope API Key，并保留其他配置项。
+**用途：** 从 `scripts/.env` 删除指定服务的 API Key，并保留其他配置项。
 
 **完整语法：**
 
 ```powershell
-python scripts/commands/env_writer.py remove
+python scripts/main.py key remove [--service <dashscope|maizi>]
 ```
 
-**参数：** 无。
+**参数：**
+
+| 参数 | 说明 | 必填 | 默认值 / 可选值 |
+|---|---|---|---|
+| `--service <dashscope\|maizi>` | 目标服务 | 否 | 默认 `dashscope` |
 
 **示例：**
 
 ```powershell
-python scripts/commands/env_writer.py remove
+python scripts/main.py key remove --service maizi
 ```
 
 **输出示例：**
 
 ```json
 {
+  "service": "maizi",
   "configured": false
 }
 ```
@@ -1367,6 +1679,9 @@ python scripts/commands/env_writer.py remove
 | 视觉最高质量默认 | 已封装 | 未传质量参数时真实返回 `qwen3.7-plus`、`thinking=true`、`high_resolution=true` |
 | Qwen-OCR 七种图片任务 | 已封装 | 默认 `qwen3.5-ocr` 与 `rotate=true` 真实 CLI 通过；信息抽取返回 `ocr_result.kv_result` |
 | Qwen-OCR PDF 解析 | 已封装公网 URL | 真实 CLI 通过并返回文本与 `ocr_result.layouts` |
-| 统一入口 | 已创建 | `scripts/main.py` 注册 `media`、`file`、`speech`、`tts`、`visual`、`key` 六个命令组，独立入口继续兼容 |
-| 根 `SKILL.md` | 已创建 | 可按文件、语音和视觉意图路由到本清单 |
+| 统一入口 | 已创建 | `scripts/main.py` 注册 `media`、`file`、`speech`、`tts`、`visual`、`image`、`key` 七个命令组，独立入口继续兼容 |
+| 根 `SKILL.md` | 已创建 | 可按文件、语音、视觉和图片意图路由到本清单 |
 | Windows exe | 未创建，当前不进入打包阶段 | 工程无打包文件，用户未要求首次打包 |
+| 图片生成 v2 | 已封装 | `generate` 和 `edit` 支持 base64/URL 直接返回，12 款模型 |
+| 图片生成 v1 异步 | 已封装 | `generate-async` 支持 task_id 轮询和 Seed3D 图生 3D |
+| 图片模型查询 | 已封装 | `list-models` 列出全部模型、价格和分辨率 |
